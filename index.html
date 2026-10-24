@@ -1108,6 +1108,9 @@ let mwX = 99, mwY = 99, mouseVisto = false;   // mouse nel mondo, inseguito pian
 // ogni granello ha il suo ritmo: le partenze si spargono su 9 s, il viaggio dura 5 s,
 // e la forma comincia a smontarsi quando due terzi dei granelli l'hanno completata
 const SCENE = 7, VIAGGIO = 5.0, SPARGI = 9.0;
+// l'ordine del giro: dall'acqua alla seta a spirale, poi le opere e il respiro,
+// e per ultimo il pulviscolo sparso per tutto lo schermo
+const ORDINE = [0, 2, 3, 4, 5, 6, 1];
 const PERIODO = SPARGI*2/3 + VIAGGIO;          // 11 s: a quel punto due terzi sono arrivati e i primi ripartono
 // dopo il click: specchio, tre onde e subito il treno di luce che entra nel cuore del marchio
 const T_TRENO = 4.4, D_TRENO = 6.0, CORSA = 1.9;
@@ -1168,13 +1171,13 @@ function posCancello(i, t, out){
   let k = 0, b = 0;
   if(tau > 0){
     const n = Math.floor(tau / PERIODO);
-    k = n % SCENE;
+    k = n % SCENE;                                         // posizione nel giro, la scena vera la dice ORDINE
     b = (tau - n*PERIODO) / VIAGGIO;
     b = b >= 1 ? 1 : b*b*b*(b*(b*6 - 15) + 10);        // curva morbidissima, senza strappi
   }
-  scena(k, i, t, _a);
+  scena(ORDINE[k], i, t, _a);
   if(b > 0){
-    scena((k+1) % SCENE, i, t, _b);
+    scena(ORDINE[(k+1) % SCENE], i, t, _b);
     // il granello non va dritto: fa un piccolo arco, come portato da una corrente
     const arco = Math.sin(Math.PI*b)*0.4, dir = rnd[i*4+2]*6.2832;
     out[0] = _a[0] + (_b[0]-_a[0])*b + Math.cos(dir)*arco;

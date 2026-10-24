@@ -345,6 +345,26 @@
              border:none; transition:box-shadow .5s, transform .5s; }
   .conferma:hover{ transform:translateY(-2px); box-shadow:0 14px 38px rgba(183,154,99,0.4); }
   .esito{ margin-top:16px; font-family:var(--corsivo); font-style:italic; font-size:14px; color:var(--oro-chiaro); display:none; }
+
+  /* lista d'attesa: consenso, avviso, conferma */
+  .privacy{ display:flex; align-items:center; gap:12px; margin-top:20px; text-align:left; cursor:pointer;
+            font-family:var(--corsivo); font-size:14.5px; color:var(--sabbia); }
+  .privacy input{ appearance:none; -webkit-appearance:none; width:16px; height:16px; margin:0; flex:none;
+                  border:1px solid var(--oro); background:transparent; display:grid; place-content:center; cursor:pointer; }
+  .privacy input:checked::after{ content:""; width:8px; height:8px; background:var(--oro-chiaro); }
+  .privacy a{ color:var(--oro-chiaro); text-decoration:none; border-bottom:1px solid rgba(217,192,138,0.4); }
+  .avviso{ min-height:20px; margin-top:12px; font-family:var(--corsivo); font-style:italic; font-size:14px; color:#d9a48a; }
+  .grazie{ display:none; padding-top:4vh; }
+  #c4 .porta.inviata > *:not(.grazie):not(.nota-porta){ display:none; }
+  #c4 .porta.inviata .grazie{ display:block; animation:salita 1.4s var(--ease) both; }
+  .grazie .rombo{ width:16px; height:16px; margin:0 auto 30px; border:1px solid var(--oro); transform:rotate(45deg);
+                  box-shadow:0 0 26px rgba(217,192,138,0.4); }
+  .grazie .titolo-grazie{ font-family:var(--titoli); font-size:clamp(26px,3.4vw,44px); color:var(--avorio); letter-spacing:0.04em; }
+  .grazie p{ margin-top:16px; font-family:var(--corsivo); font-size:17px; color:var(--sabbia); }
+  .torna{ margin-top:38px; padding:14px 42px; background:none; border:1px solid var(--oro); cursor:pointer;
+          font-family:var(--sans); font-size:10px; letter-spacing:0.34em; text-transform:uppercase; color:var(--avorio);
+          transition:background .4s, color .4s, box-shadow .4s; }
+  .torna:hover{ background:var(--oro); color:#141008; box-shadow:0 0 30px rgba(183,154,99,0.35); }
   .nota-porta{ margin-top:20px; font-size:10px; color:var(--spento); letter-spacing:0.1em; line-height:1.7; }
 
   #cenno{ position:fixed; bottom:28px; left:50%; transform:translateX(-50%); z-index:7;
@@ -666,11 +686,20 @@
     <div class="separa">oppure</div>
     <button class="lista-link" id="apri-lista">Richiedi di entrare in lista d&rsquo;attesa</button>
     <div class="apri" id="blocco-lista">
-      <input class="campo" placeholder="Nome e cognome">
-      <input class="campo" placeholder="Email">
-      <input class="campo" placeholder="Telefono / WhatsApp">
+      <input class="campo" id="lista-nome" placeholder="Nome e cognome" autocomplete="name">
+      <input class="campo" id="lista-email" type="email" placeholder="Email" autocomplete="email">
+      <input class="campo" id="lista-tel" type="tel" placeholder="Telefono / WhatsApp" autocomplete="tel">
+      <label class="privacy"><input type="checkbox" id="lista-privacy">
+        <span>Ho letto e accetto la <a href="https://www.unico-luxury.com/privacy.pdf" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>
       <button class="conferma" id="via-lista">Entra in lista d&rsquo;attesa</button>
-      <div class="esito" id="esito-lista">Ti contatteremo personalmente.</div>
+      <div class="avviso" id="avviso-lista"></div>
+    </div>
+    <!-- conferma: chiude il modulo e ringrazia -->
+    <div class="grazie" id="grazie-lista">
+      <div class="rombo"></div>
+      <div class="titolo-grazie">Richiesta inviata.</div>
+      <p>Ti contatteremo personalmente.</p>
+      <button class="torna" id="torna-maison">Torna alla maison</button>
     </div>
     <button class="scopri" id="scopri-maison">Scopri la maison</button>
     <div class="nota-porta">Anteprima: i moduli non inviano nulla.</div>
@@ -1521,8 +1550,27 @@ document.getElementById('apri-lista').addEventListener('click', function(){
   document.getElementById('blocco-lista').classList.add('aperto');
   this.style.display = 'none';
 });
+// lista d'attesa: nome ed email, il consenso alla privacy, poi la conferma che chiude il modulo
+const porta = document.querySelector('#c4 .porta');
 document.getElementById('via-lista').addEventListener('click', ()=>{
-  document.getElementById('esito-lista').style.display = 'block';
+  const nome   = document.getElementById('lista-nome').value.trim();
+  const email  = document.getElementById('lista-email').value.trim();
+  const avviso = document.getElementById('avviso-lista');
+  if(!nome || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ avviso.textContent = 'Inserisci nome, cognome ed email.'; return; }
+  if(!document.getElementById('lista-privacy').checked){ avviso.textContent = 'Per proseguire serve il consenso alla Privacy Policy.'; return; }
+  avviso.textContent = '';
+  porta.classList.add('inviata');
+});
+// torna alla maison: si risale all'inizio, e la porta torna com'era per la prossima volta
+document.getElementById('torna-maison').addEventListener('click', ()=>{
+  window.scrollTo({ top:0, behavior:'smooth' });
+  setTimeout(()=>{
+    porta.classList.remove('inviata', 'lista-aperta');
+    document.getElementById('blocco-lista').classList.remove('aperto');
+    document.getElementById('apri-lista').style.display = '';
+    ['lista-nome', 'lista-email', 'lista-tel'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('lista-privacy').checked = false;
+  }, 2500);
 });
 
 /* ================================================================ *

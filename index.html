@@ -356,7 +356,13 @@
   .avviso{ min-height:20px; margin-top:12px; font-family:var(--corsivo); font-style:italic; font-size:14px; color:#d9a48a; }
   .grazie{ display:none; padding-top:4vh; }
   #c4 .porta.inviata > *:not(.grazie):not(.nota-porta){ display:none; }
-  #c4 .porta.inviata .grazie{ display:block; animation:salita 1.4s var(--ease) both; }
+  #c4 .porta.inviata .grazie.qui{ display:block; animation:salita 1.4s var(--ease) both; }
+  /* codice inserito: restano il codice ed il modulo, spariscono lista d'attesa e "oppure" */
+  #c4 .porta.codice-aperto .separa, #c4 .porta.codice-aperto #apri-lista, #c4 .porta.codice-aperto #blocco-lista{ display:none; }
+  #c4 .porta.codice-aperto .titolo{ font-size:clamp(20px,2.4vw,32px); }
+  #c4 .porta.codice-aperto .apri.aperto{ margin-top:8px; }
+  select.campo{ appearance:none; -webkit-appearance:none; cursor:pointer; border-radius:0; }
+  select.campo option{ background:#120e08; color:var(--avorio); }
   .grazie .rombo{ width:16px; height:16px; margin:0 auto 30px; border:1px solid var(--oro); transform:rotate(45deg);
                   box-shadow:0 0 26px rgba(217,192,138,0.4); }
   .grazie .titolo-grazie{ font-family:var(--titoli); font-size:clamp(26px,3.4vw,44px); color:var(--avorio); letter-spacing:0.04em; }
@@ -681,7 +687,26 @@
       <input id="codice" maxlength="9" placeholder="UN&middot;0000" autocomplete="off" aria-label="Codice invito">
       <button class="freccia" id="via-codice" aria-label="Conferma codice">&rarr;</button>
     </div>
-    <div class="esito" id="esito-codice">Codice ricevuto. Sar&agrave; chi ti ha riservato l&rsquo;invito ad accompagnarti nella UNICO Experience.</div>
+    <div class="avviso" id="avviso-codice-ingresso"></div>
+    <div class="apri" id="blocco-codice">
+      <input class="campo" id="cod-nome" placeholder="Nome e cognome" autocomplete="name">
+      <input class="campo" id="cod-email" type="email" placeholder="Email" autocomplete="email">
+      <input class="campo" id="cod-tel" type="tel" placeholder="Telefono / WhatsApp" autocomplete="tel">
+      <select class="campo" id="cod-modo" aria-label="Modalit&agrave; preferita">
+        <option value="">Modalit&agrave; preferita</option>
+        <option>Montecarlo</option><option>Presso di me</option><option>Video</option>
+      </select>
+      <label class="privacy"><input type="checkbox" id="cod-privacy">
+        <span>Ho letto e accetto la <a href="https://www.unico-luxury.com/privacy.pdf" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>
+      <button class="conferma" id="via-codice-dati">Conferma la presentazione</button>
+      <div class="avviso" id="avviso-codice"></div>
+    </div>
+    <div class="grazie" id="grazie-codice">
+      <div class="rombo"></div>
+      <div class="titolo-grazie">Richiesta inviata.</div>
+      <p>Sar&agrave; chi ti ha riservato l&rsquo;invito ad accompagnarti nella UNICO Experience.</p>
+      <button class="torna">Torna alla maison</button>
+    </div>
 
     <div class="separa">oppure</div>
     <button class="lista-link" id="apri-lista">Richiedi di entrare in lista d&rsquo;attesa</button>
@@ -699,7 +724,7 @@
       <div class="rombo"></div>
       <div class="titolo-grazie">Richiesta inviata.</div>
       <p>Ti contatteremo personalmente.</p>
-      <button class="torna" id="torna-maison">Torna alla maison</button>
+      <button class="torna">Torna alla maison</button>
     </div>
     <button class="scopri" id="scopri-maison">Scopri la maison</button>
     <div class="nota-porta">Anteprima: i moduli non inviano nulla.</div>
@@ -1541,9 +1566,25 @@ addEventListener('keydown', (e)=>{ if(!entrato) return; if(e.key === 'Escape'){ 
 /* ================================================================ *
  *  LE DUE PORTE  (anteprima, nessun invio)
  * ================================================================ */
+// codice invito: col codice si apre il modulo, poi consenso e conferma, come per la lista d'attesa
+const porta = document.querySelector('#c4 .porta');
 document.getElementById('via-codice').addEventListener('click', ()=>{
   const v = document.getElementById('codice').value.trim();
-  if(v) document.getElementById('esito-codice').style.display = 'block';
+  const avviso = document.getElementById('avviso-codice-ingresso');
+  if(v.replace(/[^a-z0-9]/gi, '').length < 4){ avviso.textContent = 'Inserisci il codice riportato sul tuo invito.'; return; }
+  avviso.textContent = '';
+  porta.classList.add('codice-aperto');
+  document.getElementById('blocco-codice').classList.add('aperto');
+});
+document.getElementById('via-codice-dati').addEventListener('click', ()=>{
+  const nome   = document.getElementById('cod-nome').value.trim();
+  const email  = document.getElementById('cod-email').value.trim();
+  const avviso = document.getElementById('avviso-codice');
+  if(!nome || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ avviso.textContent = 'Inserisci nome, cognome ed email.'; return; }
+  if(!document.getElementById('cod-privacy').checked){ avviso.textContent = 'Per proseguire serve il consenso alla Privacy Policy.'; return; }
+  avviso.textContent = '';
+  document.getElementById('grazie-codice').classList.add('qui');
+  porta.classList.add('inviata');
 });
 document.getElementById('apri-lista').addEventListener('click', function(){
   this.closest('.porta').classList.add('lista-aperta');
@@ -1551,7 +1592,6 @@ document.getElementById('apri-lista').addEventListener('click', function(){
   this.style.display = 'none';
 });
 // lista d'attesa: nome ed email, il consenso alla privacy, poi la conferma che chiude il modulo
-const porta = document.querySelector('#c4 .porta');
 document.getElementById('via-lista').addEventListener('click', ()=>{
   const nome   = document.getElementById('lista-nome').value.trim();
   const email  = document.getElementById('lista-email').value.trim();
@@ -1559,19 +1599,19 @@ document.getElementById('via-lista').addEventListener('click', ()=>{
   if(!nome || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ avviso.textContent = 'Inserisci nome, cognome ed email.'; return; }
   if(!document.getElementById('lista-privacy').checked){ avviso.textContent = 'Per proseguire serve il consenso alla Privacy Policy.'; return; }
   avviso.textContent = '';
+  document.getElementById('grazie-lista').classList.add('qui');
   porta.classList.add('inviata');
 });
 // torna alla maison: si risale all'inizio, e la porta torna com'era per la prossima volta
-document.getElementById('torna-maison').addEventListener('click', ()=>{
+document.querySelectorAll('#c4 .torna').forEach(b => b.addEventListener('click', ()=>{
   window.scrollTo({ top:0, behavior:'smooth' });
   setTimeout(()=>{
-    porta.classList.remove('inviata', 'lista-aperta');
-    document.getElementById('blocco-lista').classList.remove('aperto');
+    porta.classList.remove('inviata', 'lista-aperta', 'codice-aperto');
+    document.querySelectorAll('#c4 .grazie, #c4 .apri').forEach(el => el.classList.remove('qui', 'aperto'));
     document.getElementById('apri-lista').style.display = '';
-    ['lista-nome', 'lista-email', 'lista-tel'].forEach(id => document.getElementById(id).value = '');
-    document.getElementById('lista-privacy').checked = false;
+    porta.querySelectorAll('input, select').forEach(el => { if(el.type === 'checkbox') el.checked = false; else el.value = ''; });
   }, 2500);
-});
+}));
 
 /* ================================================================ *
  *  RESIZE

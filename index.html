@@ -1,0 +1,1526 @@
+<!doctype html>
+<!--
+  UNICO — sito immersivo, chiesto da Matteo il 23/10/2026, terza versione del 24/10.
+  Un solo ambiente continuo in ORO: si entra dal marchio UNICO in 3D (ricostruito dal
+  simbolo vero), semi-trasparente, con le orbite intorno. Le sezioni con le foto del sito
+  (maison, creazioni, eventi, stampa) NON appaiono scorrendo: si aprono dal menu a tre
+  linette in alto a sinistra, come nelle maison. La polvere è molto leggera, passa dietro
+  ai testi, e scendendo disegna le configurazioni dei gioielli delle foto: la losanga del
+  marchio, la stella a otto punte incisa, la farfalla, il fiocco.
+  Font: Marcellus (titoli) · EB Garamond (corsivi) · Inter (etichette).
+  Librerie: Three.js · GSAP. Scroll nativo smussato nel ciclo di rendering.
+-->
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="robots" content="noindex, nofollow" />   <!-- anteprima riservata: fuori dai motori di ricerca -->
+<title>UNICO — Maison</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Inter:wght@200;300;400&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --nero:    #070605;
+    --avorio:  #efe8d9;
+    --sabbia:  #b7b2a4;
+    --spento:  #5f5b52;
+    --oro:        #b79a63;
+    --oro-chiaro: #d9c08a;
+    --oro-cupo:   #8a7038;
+    --oro-luce:   rgba(217,192,138,0.5);
+    --filo:    rgba(183,154,99,0.28);
+    --velo-pannello: rgba(10,8,5,0.96);
+    --ease:    cubic-bezier(0.16, 1, 0.3, 1);
+    --titoli:  "Marcellus", Georgia, serif;
+    --corsivo: "EB Garamond", Georgia, serif;
+    --sans:    "Inter", "Segoe UI", system-ui, sans-serif;
+  }
+
+  *{ margin:0; padding:0; box-sizing:border-box; }
+
+  html, body{
+    background:
+      radial-gradient(120% 85% at 72% 12%, #171309 0%, transparent 55%),
+      radial-gradient(90% 70% at 18% 88%, #120e07 0%, transparent 60%),
+      linear-gradient(180deg, #0a0906 0%, var(--nero) 55%, #050403 100%);
+    color:var(--avorio);
+    font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+
+  #scroll-space{ height:520vh; position:relative; z-index:1; pointer-events:none; }
+  #gl{ position:fixed; inset:0; z-index:0; display:block; width:100vw; height:100vh; }
+
+  /* atmosfera: vignetta + bagliori caldi + grana fine, mai tinta unita */
+  #atmos{
+    position:fixed; inset:0; z-index:2; pointer-events:none;
+    background:
+      radial-gradient(130% 95% at 50% 40%, transparent 50%, rgba(0,0,0,0.6) 100%),
+      radial-gradient(70% 55% at 82% 18%, rgba(183,154,99,0.07), transparent 60%),
+      radial-gradient(60% 50% at 12% 82%, rgba(154,85,48,0.05), transparent 60%);
+  }
+  #grana{
+    position:fixed; inset:-60px; z-index:2; pointer-events:none; opacity:0.13;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/></svg>");
+    mix-blend-mode:overlay; animation:grana 1.1s steps(3) infinite;
+  }
+  @keyframes grana{ 0%{transform:translate(0,0)} 33%{transform:translate(-25px,14px)} 66%{transform:translate(18px,-22px)} 100%{transform:translate(0,0)} }
+
+  /* ------------------------------------------------------------------ *
+   *  CANCELLO D'ACCESSO
+   * ------------------------------------------------------------------ */
+  #gate{
+    position:fixed; inset:0; z-index:40;
+    display:flex; flex-direction:column; align-items:center; justify-content:flex-end;
+    padding-bottom:5vh; gap:22px; text-align:center;
+    transition:opacity 1.8s var(--ease);
+  }
+  #gate .sigillo-logo{ height:clamp(42px,6vw,60px); display:block;
+                  filter:drop-shadow(0 6px 22px rgba(0,0,0,0.6));
+                  opacity:0; animation:salita 2s var(--ease) 0.7s forwards; }
+  #gate .motto{ font-family:var(--corsivo); font-style:italic; font-size:clamp(14px,1.5vw,17px);
+                letter-spacing:0.12em; color:var(--oro-chiaro);
+                opacity:0; animation:salita 2s var(--ease) 1.2s forwards; }
+  .zona-marchio{ position:absolute; left:50%; top:10%; width:min(94vw,68vh); height:60%;
+                 transform:translateX(-50%); cursor:pointer; }
+  #gate .sigillo-logo{ cursor:pointer; }
+  .entra::before{ content:""; position:absolute; inset:0;
+    background:linear-gradient(115deg, transparent 30%, rgba(239,232,217,0.2) 50%, transparent 70%);
+    transform:translateX(-130%); transition:transform 1s var(--ease); }
+  .entra:hover::before{ transform:translateX(130%); }
+  #gate .nota{ font-size:9px; letter-spacing:0.34em; text-transform:uppercase; color:var(--spento);
+               opacity:0; animation:salita 2s var(--ease) 2.3s forwards; }
+
+  /* ------------------------------------------------------------------ *
+   *  ALTO: tre linette a sinistra, marca al centro
+   * ------------------------------------------------------------------ */
+  #alto{
+    position:fixed; top:0; left:0; right:0; z-index:36;   /* sopra menu e pannelli: le linette chiudono sempre */
+    display:grid; grid-template-columns:1fr auto 1fr; align-items:center;
+    padding:24px clamp(22px,4.5vw,70px);
+    opacity:0; transform:translateY(-12px); pointer-events:none;
+  }
+  #alto .marca img{ height:24px; display:block; }
+  #alto .destra{ justify-self:end; font-size:9px; letter-spacing:0.32em; text-transform:uppercase; color:var(--spento); }
+  @media (max-width:640px){ #alto .destra{ display:none; } }
+
+  #burger{
+    justify-self:start; width:40px; height:34px; background:none; border:none; cursor:pointer;
+    display:flex; flex-direction:column; justify-content:center; gap:7px; padding:6px;
+  }   /* eredita da #alto: cliccabile solo dopo l'ingresso */
+  #burger span{ display:block; width:26px; height:1px; background:var(--avorio);
+                transition:transform .5s var(--ease), opacity .4s, background .4s; }
+  #burger:hover span{ background:var(--oro-chiaro); }
+  #burger.aperto span:nth-child(1){ transform:translateY(8px) rotate(45deg); }
+  #burger.aperto span:nth-child(2){ opacity:0; }
+  #burger.aperto span:nth-child(3){ transform:translateY(-8px) rotate(-45deg); }
+
+  /* ------------------------------------------------------------------ *
+   *  MENU  (si apre dalle tre linette)
+   * ------------------------------------------------------------------ */
+  #menu{
+    position:fixed; inset:0; z-index:30; display:flex; align-items:center;
+    padding:0 clamp(26px,10vw,160px);
+    background:
+      radial-gradient(90% 80% at 15% 20%, rgba(32,25,12,0.55), transparent 60%),
+      linear-gradient(115deg, rgba(10,8,5,0.985) 0%, rgba(13,10,6,0.96) 60%, rgba(8,6,4,0.985) 100%);
+    opacity:0; visibility:hidden; transition:opacity .7s var(--ease), visibility .7s;
+  }
+  #menu.aperto{ opacity:1; visibility:visible; }
+  #menu ul{ list-style:none; }
+  #menu li{ margin:clamp(10px,2.2vh,22px) 0; }
+  #menu .voce{
+    background:none; border:none; cursor:pointer; text-align:left;
+    display:flex; align-items:baseline; gap:22px;
+    opacity:0; transform:translateY(18px);
+    transition:opacity .7s var(--ease), transform .7s var(--ease);
+  }
+  #menu.aperto .voce{ opacity:1; transform:translateY(0); }
+  #menu li:nth-child(1) .voce{ transition-delay:.10s } #menu li:nth-child(2) .voce{ transition-delay:.17s }
+  #menu li:nth-child(3) .voce{ transition-delay:.24s } #menu li:nth-child(4) .voce{ transition-delay:.31s }
+  #menu li:nth-child(5) .voce{ transition-delay:.38s } #menu li:nth-child(6) .voce{ transition-delay:.45s }
+  #menu .cifra{ font-family:var(--sans); font-weight:200; font-size:10px; letter-spacing:0.3em; color:var(--oro); }
+  #menu .nome{ font-family:var(--titoli); font-size:clamp(26px,4.6vh,44px); color:var(--sabbia);
+               letter-spacing:0.06em; transition:color .4s, letter-spacing .6s var(--ease); }
+  #menu .voce:hover .nome{ color:var(--avorio); letter-spacing:0.1em; }
+  #menu .voce:hover .cifra{ color:var(--oro-chiaro); }
+  #menu .piede{ position:absolute; bottom:30px; left:clamp(26px,10vw,160px);
+                font-family:var(--corsivo); font-style:italic; font-size:14px; color:var(--spento); letter-spacing:0.08em; }
+
+  /* ------------------------------------------------------------------ *
+   *  PANNELLI DELLE SEZIONI  (si aprono dal menu)
+   * ------------------------------------------------------------------ */
+  .pannello{
+    position:fixed; inset:0; z-index:32; overflow-y:auto; overscroll-behavior:contain;
+    background:
+      radial-gradient(80% 60% at 85% 10%, rgba(32,25,12,0.6), transparent 55%),
+      linear-gradient(180deg, rgba(10,8,5,0.995) 0%, rgba(12,9,6,0.99) 55%, rgba(7,5,4,0.997) 100%);
+    opacity:0; visibility:hidden; transition:opacity .6s var(--ease), visibility .6s;
+  }
+  .pannello.aperto{ opacity:1; visibility:visible; }
+  .pannello .interno{ max-width:1100px; margin:0 auto; padding:clamp(90px,14vh,130px) clamp(22px,5vw,60px) 90px; }
+  .pannello .filetto{ margin-bottom:16px; }
+  .pannello .intesta{ font-family:var(--titoli); font-size:clamp(28px,4vw,52px); color:var(--avorio); letter-spacing:0.04em; line-height:1.15; }
+  .pannello .intesta i{ font-family:var(--corsivo); font-style:italic; color:var(--oro-chiaro); letter-spacing:0; }
+  .indietro{
+    position:fixed; top:70px; left:clamp(22px,4.5vw,70px); z-index:34;
+    background:none; border:none; cursor:pointer; padding:8px 0;
+    font-family:var(--sans); font-size:9.5px; letter-spacing:0.32em; text-transform:uppercase;
+    color:var(--sabbia); transition:color .4s;
+  }
+  .indietro:hover{ color:var(--oro-chiaro); }
+
+  .blocco-foto{ display:grid; grid-template-columns:1.05fr 0.95fr; gap:clamp(24px,4vw,56px);
+                align-items:center; margin-top:clamp(36px,7vh,64px); }
+  .blocco-foto.inverso .quadro{ order:2; }
+  /* le foto si vedono sempre intere e centrate: la cornice abbraccia la foto, niente tagli */
+  .quadro{ position:relative; border:1px solid var(--filo); padding:10px;
+           width:fit-content; max-width:100%; margin:0 auto;
+           background:linear-gradient(165deg, rgba(36,30,17,0.35), rgba(12,10,6,0.25));
+           box-shadow:0 30px 80px -30px rgba(0,0,0,0.7); }
+  .quadro img{ display:block; width:auto; max-width:100%; height:auto; max-height:min(72vh,680px);
+               object-fit:contain; object-position:center; filter:saturate(0.97); }
+  .quadro .targa{ position:absolute; left:10px; right:10px; bottom:10px; padding:12px 16px 10px;
+                  background:linear-gradient(0deg, rgba(5,3,2,0.78), transparent);
+                  font-size:9px; letter-spacing:0.3em; text-transform:uppercase; color:var(--sabbia); }
+  .descrizione h3{ font-family:var(--titoli); font-weight:400; font-size:clamp(20px,2.2vw,28px); color:var(--avorio); letter-spacing:0.04em; }
+  .descrizione p{ margin-top:14px; font-family:var(--corsivo); font-size:clamp(15px,1.5vw,17.5px);
+                  color:var(--sabbia); line-height:1.85; max-width:480px; }
+  .firma-riga{ margin-top:24px; width:52px; height:1px; background:linear-gradient(90deg, var(--oro), transparent); }
+
+  .griglia-espressioni{ display:grid; grid-template-columns:repeat(3,1fr); gap:clamp(14px,2vw,26px); margin-top:clamp(36px,7vh,60px); }
+  .espressione{ position:relative; }
+  .espressione .quadro img{ height:clamp(300px,52vh,520px); max-height:none; transition:filter .8s var(--ease); }
+  .espressione:hover .quadro img{ filter:saturate(1.05) brightness(1.06); }
+  .espressione .dida{ justify-content:center; }
+  .espressione .dida{ display:flex; align-items:baseline; gap:12px; margin-top:12px; }
+  .espressione .rom{ font-family:var(--titoli); font-size:19px; color:var(--oro-chiaro); }
+  .espressione .tit{ font-size:9px; letter-spacing:0.3em; text-transform:uppercase; color:var(--spento); }
+
+  .ritagli{ margin-top:clamp(36px,7vh,60px); }
+  .ritaglio{ display:flex; align-items:baseline; gap:22px; padding:24px 6px;
+             border-top:1px solid rgba(183,178,164,0.14); }
+  .ritaglio:last-of-type{ border-bottom:1px solid rgba(183,178,164,0.14); }
+  .ritaglio .testata{ flex:0 0 150px; font-size:9.5px; letter-spacing:0.32em; text-transform:uppercase; color:var(--oro); }
+  .ritaglio .riga-art{ flex:1; font-family:var(--corsivo); font-style:italic;
+                       font-size:clamp(16px,1.8vw,21px); color:rgba(239,232,217,0.42); }
+  .ritaglio .anno{ font-size:10px; letter-spacing:0.2em; color:var(--spento); }
+  .nota-piccola{ margin-top:18px; font-size:10px; letter-spacing:0.14em; color:var(--spento); }
+
+  .sotto-pannello{ margin-top:16px; font-family:var(--corsivo); color:var(--sabbia);
+                   font-size:clamp(15px,1.5vw,17.5px); line-height:1.85; max-width:720px; }
+  .griglia-principi{ display:grid; grid-template-columns:repeat(2,1fr); gap:clamp(14px,2vw,24px); margin-top:clamp(30px,5vh,48px); }
+  .principio{ border:1px solid rgba(183,154,99,0.16); padding:26px 24px 28px;
+              background:linear-gradient(165deg, rgba(36,30,17,0.4), rgba(12,10,6,0.28)); }
+  .principio .rom{ font-family:var(--titoli); color:var(--oro-chiaro); font-size:15px; letter-spacing:0.2em; }
+  .principio h3{ font-family:var(--titoli); font-weight:400; font-size:20px; color:var(--avorio); margin-top:10px; letter-spacing:0.03em; }
+  .principio p{ margin-top:10px; font-family:var(--corsivo); font-size:15px; color:var(--sabbia); line-height:1.75; }
+  .materiali{ list-style:none; margin-top:22px; }
+  .materiali li{ padding:12px 0 12px 28px; position:relative; font-family:var(--corsivo);
+                 font-size:16px; color:var(--sabbia); border-bottom:1px solid rgba(183,178,164,0.12); }
+  .materiali li::before{ content:"\2014"; position:absolute; left:0; color:var(--oro); }
+  .griglia-tre{ display:grid; grid-template-columns:repeat(3,1fr); gap:clamp(12px,1.8vw,22px); margin-top:clamp(22px,4vh,36px); }
+  .griglia-tre{ align-items:center; }
+  .griglia-tre .quadro img{ height:clamp(200px,34vh,340px); max-height:none; }
+  .firma-visione{ margin-top:18px; font-family:var(--corsivo); font-style:italic; font-size:16px; color:var(--oro-chiaro); }
+  .valore{ margin-top:clamp(40px,8vh,70px); padding:30px clamp(18px,4vw,50px); text-align:center;
+           border-top:1px solid rgba(183,154,99,0.2); border-bottom:1px solid rgba(183,154,99,0.2);
+           font-family:var(--corsivo); font-style:italic; font-size:clamp(15px,1.7vw,19px); color:var(--sabbia); line-height:1.9; }
+  .passo-rom{ font-family:var(--titoli); font-size:15px; letter-spacing:0.22em; color:var(--oro-chiaro); margin-bottom:10px; }
+  .quadro video{ display:block; width:100%; height:auto; max-height:min(72vh,680px); object-fit:contain; }
+  .faq{ margin-top:clamp(30px,6vh,50px); }
+  .faq details{ border-top:1px solid rgba(183,178,164,0.14); }
+  .faq details:last-of-type{ border-bottom:1px solid rgba(183,178,164,0.14); }
+  .faq summary{ cursor:pointer; list-style:none; display:flex; justify-content:space-between; align-items:baseline; gap:18px;
+                padding:20px 4px; font-family:var(--titoli); font-size:clamp(16px,1.9vw,21px);
+                color:var(--avorio); letter-spacing:0.03em; transition:color .4s; }
+  .faq summary::-webkit-details-marker{ display:none; }
+  .faq summary::after{ content:"+"; color:var(--oro); font-family:var(--sans); font-weight:200; font-size:20px;
+                       flex:none; transition:transform .4s var(--ease); }
+  .faq details[open] summary::after{ transform:rotate(45deg); }
+  .faq summary:hover{ color:var(--oro-chiaro); }
+  .faq .risposta{ padding:0 4px 22px; font-family:var(--corsivo); font-size:16px; color:var(--sabbia); line-height:1.85; max-width:740px; }
+
+  /* ------------------------------------------------------------------ *
+   *  CAPITOLI DEL VIAGGIO  (solo atmosfera e accesso)
+   * ------------------------------------------------------------------ */
+  .cap{
+    position:fixed; inset:0; z-index:5;
+    display:flex; padding:clamp(24px,5vw,80px);
+    opacity:0; pointer-events:none; will-change:opacity, transform;
+  }
+  .cap .dentro{ width:100%; max-width:1280px; margin:0 auto; }
+  .centro{ align-items:center; justify-content:center; text-align:center; }
+
+  .filetto{ font-size:9.5px; letter-spacing:0.46em; text-transform:uppercase; color:var(--oro); margin-bottom:22px; }
+  .titolo{ font-family:var(--titoli); line-height:1.18; letter-spacing:0.04em;
+           font-size:clamp(26px,3.6vw,52px); color:var(--avorio); }
+  .titolo b{ font-weight:400; color:var(--oro-chiaro); }
+  .titolo i{ font-family:var(--corsivo); font-style:italic; letter-spacing:0.01em; }
+  .sotto{ margin-top:22px; max-width:540px; font-family:var(--corsivo);
+          color:var(--sabbia); font-size:clamp(14px,1.5vw,17px); line-height:1.9; }
+  .centro .sotto{ margin-left:auto; margin-right:auto; }
+
+  #c1 .dentro{ display:grid; grid-template-columns:1.02fr 0.98fr; gap:clamp(24px,4vw,64px);
+               align-items:center; height:100%; }
+  #c1 .blocco{ max-width:620px; align-self:end; padding-bottom:6vh; }
+  #c1 .titolo{ font-size:clamp(28px,4vw,58px); }
+  .hero-video{ opacity:0; position:relative; border:1px solid var(--filo); padding:10px;
+               background:linear-gradient(165deg, rgba(36,30,17,0.35), rgba(12,10,6,0.25));
+               box-shadow:0 30px 80px -30px rgba(0,0,0,0.75); justify-self:end; width:fit-content; max-width:100%; }
+  .hero-video video{ display:block; height:min(72vh,640px); width:auto; max-width:100%; aspect-ratio:9/16; object-fit:contain; }   /* Ysandra intera, video verticale */
+  /* sul telefono Ysandra resta: video in alto, testo sotto */
+  @media (max-width:900px){
+    #c1 .dentro{ grid-template-columns:1fr; grid-template-rows:auto auto; align-content:center; gap:18px; padding-top:64px; }
+    .hero-video{ order:-1; justify-self:center; padding:6px; }
+    .hero-video video{ height:min(36vh,320px); }
+    #c1 .blocco{ align-self:start; padding-bottom:0; }
+    #c1 .titolo{ font-size:clamp(26px,7vw,40px); }
+    #c1 .sotto{ margin-top:12px; font-size:13.5px; line-height:1.7; }
+    .righe{ margin-top:14px; gap:12px; }
+  }
+  .righe{ margin-top:26px; display:flex; gap:22px; flex-wrap:wrap;
+          font-size:9px; letter-spacing:0.3em; text-transform:uppercase; color:var(--spento); }
+  .righe b{ color:var(--sabbia); font-weight:300; }
+
+  /* accesso, le due porte */
+  /* il testo parte sempre sotto il marchio fermo con il diamante di luce, anche a lista aperta */
+  #c4{ align-items:flex-start; overflow-y:auto; padding-bottom:16px; }
+  #c4 .dentro{ padding-top:max(0px, calc(29vh - clamp(24px,5vw,80px))); }
+  #c4 .porta.lista-aperta .codice, #c4 .porta.lista-aperta .separa, #c4 .porta.lista-aperta #esito-codice{ display:none; }
+  #c4 .porta.lista-aperta .titolo{ font-size:clamp(20px,2.4vw,32px); }
+  #c4 .porta.lista-aperta .apri.aperto{ margin-top:8px; }
+  #c4 .porta{ max-width:500px; margin:0 auto; text-align:center; }   /* cliccabile solo quando la sezione si vede */
+  .scopri{ margin-top:38px; background:none; border:none; cursor:pointer; padding:10px 4px;
+           display:inline-flex; align-items:center; gap:16px;
+           font-family:var(--titoli); font-size:12.5px; letter-spacing:0.34em; text-transform:uppercase;
+           color:var(--avorio); transition:color .4s, letter-spacing .6s var(--ease); }
+  .scopri::before, .scopri::after{ content:""; width:34px; height:1px; transition:width .6s var(--ease); }
+  .scopri::before{ background:linear-gradient(90deg, transparent, var(--oro)); }
+  .scopri::after{ background:linear-gradient(90deg, var(--oro), transparent); }
+  .scopri:hover{ color:var(--oro-chiaro); letter-spacing:0.4em; }
+  .scopri:hover::before, .scopri:hover::after{ width:54px; }
+  /* batte come un cuore: due colpi ravvicinati, poi una pausa */
+  .scopri{ animation:battito 3s ease-in-out infinite; transform-origin:50% 50%; }   /* battito lento, a riposo */
+  @keyframes battito{
+    0%   { transform:scale(1);    text-shadow:none; }
+    12%  { transform:scale(1.07); text-shadow:0 0 18px rgba(217,192,138,0.55); }
+    24%  { transform:scale(1);    text-shadow:none; }
+    36%  { transform:scale(1.045); text-shadow:0 0 12px rgba(217,192,138,0.4); }
+    52%  { transform:scale(1);    text-shadow:none; }
+    100% { transform:scale(1);    text-shadow:none; }
+  }
+  .codice{ margin-top:36px; display:flex; align-items:flex-end; gap:16px; justify-content:center; }
+  .codice input{
+    width:min(240px,46vw); background:none; border:none; border-bottom:1px solid rgba(183,154,99,0.5);
+    color:var(--avorio); font-family:var(--titoli); font-size:22px; letter-spacing:0.4em; text-transform:uppercase;
+    text-align:center; padding:8px 2px; outline:none; transition:border-color .4s;
+  }
+  .codice input::placeholder{ color:var(--spento); }
+  .etichetta-codice{ flex:none; padding-bottom:12px; white-space:nowrap;
+                     font-family:var(--sans); font-weight:300; font-size:10.5px; letter-spacing:0.18em;
+                     color:var(--sabbia); }
+  .codice input:focus{ border-bottom-color:var(--oro-chiaro); }
+  .freccia{ background:none; border:1px solid var(--oro); color:var(--oro); width:46px; height:46px;
+            cursor:pointer; font-size:17px; transition:background .35s, color .35s, box-shadow .35s; }
+  .freccia:hover{ background:var(--oro); color:#141008; box-shadow:0 0 30px rgba(183,154,99,0.4); }
+  .separa{ display:flex; align-items:center; gap:16px; margin:40px auto 18px; max-width:360px;
+           color:var(--spento); font-size:10px; letter-spacing:0.26em; text-transform:uppercase; }
+  .separa::before,.separa::after{ content:""; flex:1; height:1px;
+           background:linear-gradient(90deg, transparent, rgba(183,178,164,0.25), transparent); }
+  .lista-link{ background:none; border:none; padding:0 0 3px; cursor:pointer;
+               font-family:var(--corsivo); font-size:15px; color:var(--sabbia);
+               letter-spacing:0.04em; border-bottom:1px solid rgba(216,211,198,0.3); transition:color .4s, border-color .4s; }
+  .lista-link:hover{ color:var(--avorio); border-bottom-color:var(--oro); }
+  .apri{ max-height:0; overflow:hidden; opacity:0; transition:max-height .8s var(--ease), opacity .7s var(--ease); }
+  .apri.aperto{ max-height:540px; opacity:1; margin-top:24px; }
+  .campo{ display:block; width:100%; background:none; border:none; border-bottom:1px solid rgba(183,178,164,0.25);
+          color:var(--avorio); font-family:var(--sans); font-weight:300; font-size:13.5px;
+          padding:11px 2px; margin-top:10px; outline:none; transition:border-color .4s; }
+  .campo:focus{ border-bottom-color:var(--oro); }
+  .campo::placeholder{ color:var(--spento); }
+  .conferma{ margin-top:28px; padding:14px 38px; cursor:pointer;
+             font-size:10px; letter-spacing:0.32em; text-transform:uppercase; color:#141008;
+             background:linear-gradient(180deg, var(--oro-chiaro), var(--oro));
+             border:none; transition:box-shadow .5s, transform .5s; }
+  .conferma:hover{ transform:translateY(-2px); box-shadow:0 14px 38px rgba(183,154,99,0.4); }
+  .esito{ margin-top:16px; font-family:var(--corsivo); font-style:italic; font-size:14px; color:var(--oro-chiaro); display:none; }
+  .nota-porta{ margin-top:20px; font-size:10px; color:var(--spento); letter-spacing:0.1em; line-height:1.7; }
+
+  #cenno{ position:fixed; bottom:28px; left:50%; transform:translateX(-50%); z-index:7;
+          font-size:9px; letter-spacing:0.5em; text-indent:0.5em; text-transform:uppercase;
+          color:var(--spento); opacity:0; pointer-events:none; }
+  #cenno .goccia{ display:block; width:1px; height:28px; margin:12px auto 0;
+                  background:linear-gradient(var(--oro), transparent); animation:goccia 2.6s var(--ease) infinite; }
+  @keyframes goccia{ 0%{transform:scaleY(0); transform-origin:top} 45%{transform:scaleY(1); transform-origin:top}
+                     60%{transform:scaleY(1); transform-origin:bottom} 100%{transform:scaleY(0); transform-origin:bottom} }
+  @keyframes salita{ from{opacity:0; transform:translateY(16px)} to{opacity:1; transform:translateY(0)} }
+
+  @media (max-width:860px){
+    .blocco-foto{ grid-template-columns:1fr; }
+    .blocco-foto.inverso .quadro{ order:0; }
+    .griglia-espressioni{ grid-template-columns:repeat(2,1fr); }
+    .ritaglio .testata{ flex-basis:100px; }
+  }
+  @media (max-width:560px){ .griglia-espressioni{ grid-template-columns:1fr; } }
+  @media (prefers-reduced-motion:reduce){ *{ animation-duration:0.001ms !important; } }
+</style>
+
+<canvas id="gl"></canvas>
+<div id="atmos"></div>
+<div id="grana"></div>
+<div id="scroll-space"></div>
+
+<div id="alto">
+  <button id="burger" aria-label="Menu"><span></span><span></span><span></span></button>
+  <div class="marca"><img src="https://www.unico-luxury.com/assets/unico.png" alt="UNICO"></div>
+  <div class="destra">Accesso su presentazione</div>
+</div>
+
+<!-- MENU -->
+<nav id="menu">
+  <ul>
+    <li><button class="voce" data-pan="maison"><span class="cifra">I</span><span class="nome">La maison</span></button></li>
+    <li><button class="voce" data-pan="creazioni"><span class="cifra">II</span><span class="nome">Le creazioni</span></button></li>
+    <li><button class="voce" data-pan="eventi"><span class="cifra">III</span><span class="nome">Eventi</span></button></li>
+    <li><button class="voce" data-pan="stampa"><span class="cifra">IV</span><span class="nome">Rassegna stampa</span></button></li>
+    <li><button class="voce" data-pan="domande"><span class="cifra">V</span><span class="nome">Domande</span></button></li>
+    <li><button class="voce" data-pan="accesso"><span class="cifra">VI</span><span class="nome">Accesso</span></button></li>
+  </ul>
+  <div class="piede">Una persona &middot; Una creazione &middot; Mai replicata</div>
+</nav>
+
+<!-- PANNELLO: LA MAISON -->
+<section class="pannello" id="pan-maison">
+  <div class="interno">
+    <div class="filetto">Che cos&rsquo;&egrave; UNICO</div>
+    <div class="intesta">Una nuova forma di alta gioielleria <i>privata.</i></div>
+    <div class="blocco-foto">
+      <figure class="quadro">
+        <img src="https://www.unico-luxury.com/assets/dettaglio-unico-indossato.jpg" alt="Dettaglio UNICO indossato">
+        <figcaption class="targa">Dettaglio UNICO indossato</figcaption>
+      </figure>
+      <div class="descrizione">
+        <p>UNICO non &egrave; una collezione e non &egrave; un gioiello scelto da un catalogo. La sua architettura riconoscibile diventa una creazione diversa per ogni persona attraverso metalli preziosi, pietre, materiali rari, tessili di alta manifattura e simboli personali.</p>
+        <p>Ogni opera nasce una volta sola. Non esiste prima dell&rsquo;incontro con il cliente e non verr&agrave; mai riprodotta nella stessa forma.</p>
+        <p style="color:var(--oro-chiaro)">Un&rsquo;architettura riconoscibile &middot; Infinite declinazioni &middot; Una sola esecuzione</p>
+        <div class="firma-riga"></div>
+      </div>
+    </div>
+
+    <div class="filetto" style="margin-top:clamp(50px,9vh,80px)">La regola della maison</div>
+    <div class="intesta" style="font-size:clamp(24px,3vw,40px)">Quattro <i>principi.</i></div>
+    <div class="griglia-principi">
+      <div class="principio"><span class="rom">I</span><h3>Creata intorno a una persona</h3>
+        <p>L&rsquo;opera nasce da un dialogo privato, dai gusti, dai simboli e dalla storia del cliente. Non viene adattata: viene concepita per lui o per lei.</p></div>
+      <div class="principio"><span class="rom">II</span><h3>Mai riprodotta</h3>
+        <p>La configurazione approvata viene realizzata una sola volta. Materiali, proporzioni, incisioni, pietre e tessili definiscono un&rsquo;identit&agrave; che non verr&agrave; replicata.</p></div>
+      <div class="principio"><span class="rom">III</span><h3>Architettura proprietaria</h3>
+        <p>La struttura e il sistema UNICO sono tutelati da propriet&agrave; industriale depositata in Italia e in Europa, con estensione internazionale in corso.</p></div>
+      <div class="principio"><span class="rom">IV</span><h3>Autenticit&agrave; permanente</h3>
+        <p>Documentazione, garanzia, certificazioni delle pietre, chip NFC integrato e NFT abbinato accompagnano l&rsquo;opera nel tempo, rendendone verificabili storia e autenticit&agrave;.</p></div>
+    </div>
+
+    <div class="filetto" style="margin-top:clamp(50px,9vh,80px)">Manifattura italiana</div>
+    <div class="intesta" style="font-size:clamp(24px,3vw,40px)">Concepita come identit&agrave;. <i>Realizzata come alta gioielleria.</i></div>
+    <div class="blocco-foto">
+      <figure class="quadro">
+        <img src="https://www.unico-luxury.com/assets/eredita-tessile-e-manifattura-unico.jpg" alt="Eredità tessile e manifattura UNICO">
+        <figcaption class="targa">Eredit&agrave; tessile e manifattura</figcaption>
+      </figure>
+      <div class="descrizione">
+        <p>Ogni UNICO nasce dall&rsquo;incontro tra progettazione, alta manifattura orafa e sartorialit&agrave; italiana. Metalli, pietre, tessili e dettagli vengono lavorati per dare forma a un&rsquo;opera personale, destinata a esistere una sola volta.</p>
+        <ul class="materiali">
+          <li>Alta manifattura orafa italiana</li>
+          <li>Cuciture eseguite a mano in filo d&rsquo;oro 24 carati</li>
+          <li>Pietre selezionate, certificate quando previsto</li>
+          <li>Tessili preziosi creati per dialogare con l&rsquo;opera</li>
+        </ul>
+      </div>
+    </div>
+    <div class="griglia-tre">
+      <figure class="quadro"><img src="https://www.unico-luxury.com/assets/ricamo-in-oro-su-seta-duchesse.jpg" alt="Ricamo in oro su seta duchesse"><figcaption class="targa">Ricamo in oro su seta duchesse</figcaption></figure>
+      <figure class="quadro"><img src="https://www.unico-luxury.com/assets/confezione-special-edition-unico.jpg" alt="Confezione special edition UNICO"><figcaption class="targa">Confezione special edition</figcaption></figure>
+      <figure class="quadro"><img src="https://www.unico-luxury.com/assets/finiture-e-incisione-del-logo-unico.jpg" alt="Finiture e incisione del logo UNICO"><figcaption class="targa">Finiture e incisione del logo</figcaption></figure>
+    </div>
+
+    <div class="filetto" style="margin-top:clamp(50px,9vh,80px)">Il fondatore e la visione</div>
+    <div class="intesta" style="font-size:clamp(24px,3vw,40px)">La visione dietro <i>UNICO.</i></div>
+    <div class="blocco-foto inverso">
+      <figure class="quadro">
+        <img src="https://www.unico-luxury.com/assets/patrizio-vallena-founder-ceo-di-unico.jpg" alt="Patrizio Vallena, Founder & CEO di UNICO">
+        <figcaption class="targa">Patrizio Vallena</figcaption>
+      </figure>
+      <div class="descrizione">
+        <p>UNICO nasce da un&rsquo;osservazione di Patrizio Vallena: chi possiede quasi tutto continua a cercare qualcosa che non esista per nessun altro e che sappia rappresentarlo davvero.</p>
+        <p>L&rsquo;intuizione prende forma nel 2018 e diventa progressivamente sistema, manifattura, propriet&agrave; industriale, tecnologia e maison. Non un esercizio di stile, ma una nuova possibilit&agrave; nell&rsquo;alta gioielleria privata.</p>
+        <div class="firma-visione">&mdash; Patrizio Vallena, Founder &amp; CEO</div>
+      </div>
+    </div>
+
+    <div class="valore">Ogni UNICO viene valutato individualmente in funzione di pietre, materiali e complessit&agrave;. Le commissioni private hanno inizio da soglie riservate, comunicate personalmente durante la presentazione privata.</div>
+  </div>
+</section>
+
+<!-- PANNELLO: LE CREAZIONI -->
+<section class="pannello" id="pan-creazioni">
+  <div class="interno">
+    <div class="filetto">La UNICO Experience</div>
+    <div class="intesta">Il tuo UNICO inizia da una <i>conversazione privata.</i></div>
+    <p class="sotto-pannello">Non &egrave; necessario sapere gi&agrave; che cosa si desidera. Ci&ograve; che serve, il cliente lo porta con s&eacute;.</p>
+
+    <div class="blocco-foto">
+      <figure class="quadro"><img src="https://www.unico-luxury.com/assets/la-conversazione-privata-unico.jpg" alt="La conversazione privata UNICO"><figcaption class="targa">La conversazione privata</figcaption></figure>
+      <div class="descrizione"><div class="passo-rom">I</div>
+        <h3>Non si arriva con un&rsquo;idea. Si arriva con s&eacute; stessi.</h3>
+        <p>A Montecarlo, presso la residenza del cliente, in suite, su yacht o attraverso una prima video-consultazione. In circa quaranta minuti raccogliamo ci&ograve; che rende una persona riconoscibile a s&eacute; stessa: il gusto, i simboli, la storia.</p></div>
+    </div>
+    <div class="blocco-foto inverso">
+      <figure class="quadro"><img src="https://www.unico-luxury.com/assets/selezione-delle-pietre-durante-la-co-creazione-u.jpg" alt="Selezione delle pietre durante la co-creazione UNICO"><figcaption class="targa">Selezione delle pietre</figcaption></figure>
+      <div class="descrizione"><div class="passo-rom">II</div>
+        <h3>Nessun modello tra cui scegliere.</h3>
+        <p>Metallo, pietre, proporzioni, incisioni, simboli e tessili vengono definiti insieme, uno alla volta. Il cliente non seleziona: partecipa alla nascita della propria opera.</p></div>
+    </div>
+    <div class="blocco-foto">
+      <figure class="quadro"><img src="https://www.unico-luxury.com/assets/rendering-personale-unico.jpg" alt="Rendering personale UNICO"><figcaption class="targa">Rendering personale</figcaption></figure>
+      <div class="descrizione"><div class="passo-rom">III</div>
+        <h3>L&rsquo;opera prende forma davanti agli occhi.</h3>
+        <p>Entro 24&ndash;48 ore il cliente riceve due rendering personali. Non proposte generiche da valutare, ma la prima forma visibile di ci&ograve; che &egrave; gi&agrave; stato deciso insieme. &Egrave; il momento in cui l&rsquo;idea smette di essere una conversazione e diventa un oggetto.</p></div>
+    </div>
+    <div class="blocco-foto inverso">
+      <figure class="quadro"><img src="https://www.unico-luxury.com/assets/manifattura-italiana.jpg" alt="Manifattura italiana"><figcaption class="targa">Manifattura italiana</figcaption></figure>
+      <div class="descrizione"><div class="passo-rom">IV</div>
+        <h3>Maestri orafi e maestri sarti, in Italia.</h3>
+        <p>Dopo l&rsquo;approvazione l&rsquo;opera passa alla manifattura: dai venti ai sessanta giorni, secondo materiali e complessit&agrave;. Nessuna fase &egrave; delegata altrove.</p></div>
+    </div>
+    <div class="blocco-foto">
+      <figure class="quadro"><img src="https://www.unico-luxury.com/assets/consegna-privata.jpg" alt="Consegna privata"><figcaption class="targa">Consegna privata</figcaption></figure>
+      <div class="descrizione"><div class="passo-rom">V</div>
+        <h3>Un&rsquo;opera che nasce gi&agrave; documentata.</h3>
+        <p>Garanzia, documentazione, certificazioni delle pietre e doppia autenticazione &mdash; chip NFC integrato e NFT abbinato &mdash; accompagnano l&rsquo;opera dal primo giorno. La consegna avviene di persona, in forma riservata.</p></div>
+    </div>
+
+    <div class="blocco-foto inverso" style="align-items:center">
+      <figure class="quadro">
+        <video src="https://www.unico-luxury.com/assets/come-nasce-unico.mp4" autoplay muted loop playsinline></video>
+        <figcaption class="targa">Come nasce UNICO</figcaption>
+      </figure>
+      <div class="descrizione">
+        <h3>Come nasce UNICO</h3>
+        <p>Dalla conversazione alla consegna: la nascita di un&rsquo;opera, ripresa in maison.</p>
+        <div class="firma-riga"></div>
+      </div>
+    </div>
+
+    <div class="filetto" style="margin-top:clamp(50px,9vh,80px)">Le opere</div>
+    <div class="intesta" style="font-size:clamp(24px,3vw,40px)">Espressioni create una volta. <i>Mai da ripetere.</i></div>
+    <p class="sotto-pannello">Una selezione volutamente ristretta tra le opere nate in maison. Non modelli da acquistare, ma testimonianze: ogni creazione futura sar&agrave; diversa da tutte quelle che l&rsquo;hanno preceduta.</p>
+    <div class="griglia-espressioni">
+      <div class="espressione"><figure class="quadro"><img src="https://www.unico-luxury.com/assets/espressione-01.jpg" alt="Espressione I"></figure><div class="dida"><span class="rom">I</span><span class="tit">Espressione</span></div></div>
+      <div class="espressione"><figure class="quadro"><img src="https://www.unico-luxury.com/assets/espressione-02.jpg" alt="Espressione II"></figure><div class="dida"><span class="rom">II</span><span class="tit">Espressione</span></div></div>
+      <div class="espressione"><figure class="quadro"><img src="https://www.unico-luxury.com/assets/espressione-03.jpg" alt="Espressione III"></figure><div class="dida"><span class="rom">III</span><span class="tit">Espressione</span></div></div>
+      <div class="espressione"><figure class="quadro"><img src="https://www.unico-luxury.com/assets/espressione-04.jpg" alt="Espressione IV"></figure><div class="dida"><span class="rom">IV</span><span class="tit">Espressione</span></div></div>
+      <div class="espressione"><figure class="quadro"><img src="https://www.unico-luxury.com/assets/espressione-05.jpg" alt="Espressione V"></figure><div class="dida"><span class="rom">V</span><span class="tit">Espressione</span></div></div>
+      <div class="espressione"><figure class="quadro"><img src="https://www.unico-luxury.com/assets/espressione-06.jpg" alt="Espressione VI"></figure><div class="dida"><span class="rom">VI</span><span class="tit">Espressione</span></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- PANNELLO: EVENTI -->
+<section class="pannello" id="pan-eventi">
+  <div class="interno">
+    <div class="filetto">Presenza e credibilit&agrave;</div>
+    <div class="intesta">Presentata dove il lusso privato <i>si incontra.</i></div>
+    <p class="sotto-pannello">La credibilit&agrave; non si dichiara. Si costruisce entrando nei contesti giusti, davanti alle persone giuste.</p>
+    <div class="blocco-foto">
+      <figure class="quadro">
+        <img src="https://www.unico-luxury.com/assets/unico-a-monte-carlo-gems.jpg" alt="UNICO a Monte Carlo Gems">
+        <figcaption class="targa">Montecarlo</figcaption>
+      </figure>
+      <div class="descrizione">
+        <h3>Monte Carlo Gems</h3>
+        <p>Presentazione in uno degli appuntamenti selezionati dell&rsquo;alta gioielleria internazionale.</p>
+        <div class="firma-riga"></div>
+      </div>
+    </div>
+    <div class="blocco-foto inverso">
+      <figure class="quadro">
+        <img src="https://www.unico-luxury.com/assets/sfilata-unico-all-hotel-ritz-di-parigi.jpg" alt="Sfilata UNICO all'Hotel Ritz di Parigi">
+        <figcaption class="targa">Parigi &middot; Place Vend&ocirc;me</figcaption>
+      </figure>
+      <div class="descrizione">
+        <h3>Parigi &middot; Ritz</h3>
+        <p>Sfilata all&rsquo;H&ocirc;tel Ritz di Place Vend&ocirc;me durante la Paris Fashion Week, all&rsquo;indirizzo che il mondo riconosce come casa dell&rsquo;alta gioielleria.</p>
+        <div class="firma-riga"></div>
+      </div>
+    </div>
+    <div class="blocco-foto">
+      <figure class="quadro">
+        <img src="https://www.unico-luxury.com/assets/presentazione-unico-al-monaco-yacht-show.jpg" alt="Presentazione UNICO al Monaco Yacht Show">
+        <figcaption class="targa">Montecarlo</figcaption>
+      </figure>
+      <div class="descrizione">
+        <h3>Monaco Yacht Show</h3>
+        <p>Presentazione nel circuito internazionale del lusso privato e della clientela UHNWI.</p>
+        <div class="firma-riga"></div>
+      </div>
+    </div>
+    <div class="blocco-foto inverso">
+      <figure class="quadro">
+        <img src="https://www.unico-luxury.com/assets/evento-privato-unico-in-collaborazione-con-jovad.jpg" alt="Evento privato UNICO in collaborazione con Jovadi, Parigi">
+        <figcaption class="targa">Parigi &middot; Champs-&Eacute;lys&eacute;es</figcaption>
+      </figure>
+      <div class="descrizione">
+        <h3>Jovadi &middot; Parigi</h3>
+        <p>Evento privato in collaborazione con Jovadi, nella prestigiosa boutique sugli Champs-&Eacute;lys&eacute;es.</p>
+        <div class="firma-riga"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PANNELLO: DOMANDE -->
+<section class="pannello" id="pan-domande">
+  <div class="interno">
+    <div class="filetto">Domande frequenti</div>
+    <div class="intesta">Prima di richiedere una <i>presentazione.</i></div>
+    <div class="faq">
+      <details><summary>UNICO &egrave; un modello da scegliere?</summary>
+        <div class="risposta">No. La maison possiede un&rsquo;architettura riconoscibile, ma ogni creazione nasce da zero intorno all&rsquo;identit&agrave; di chi la ricever&agrave;. Le immagini mostrate sono soltanto espressioni di riferimento: mai un catalogo tra cui scegliere.</div></details>
+      <details><summary>Dove avviene la presentazione?</summary>
+        <div class="risposta">A Montecarlo, presso la residenza del cliente, in suite, su yacht o attraverso una prima video-consultazione privata. Non esistono showroom pubblici: ogni incontro viene organizzato su misura, nel luogo e nei tempi pi&ugrave; comodi per il cliente, e la modalit&agrave; viene definita personalmente con il team.</div></details>
+      <details><summary>Quanto dura la co-creazione?</summary>
+        <div class="risposta">L&rsquo;incontro iniziale dura indicativamente 40 minuti. Il cliente viene guidato attraverso domande e scelte visive: non serve arrivare con un progetto gi&agrave; definito, basta portare se stessi.</div></details>
+      <details><summary>Quando ricevo i rendering?</summary>
+        <div class="risposta">La maison invia generalmente due rendering personali entro 24&ndash;48 ore dalla co-creazione, pensati per mostrare concretamente la direzione dell&rsquo;opera prima che inizi la manifattura.</div></details>
+      <details><summary>Quanto richiede la produzione?</summary>
+        <div class="risposta">Indicativamente da 20 a 60 giorni dopo l&rsquo;approvazione, secondo materiali, pietre e complessit&agrave; della lavorazione, interamente affidata a maestri orafi e maestri sarti italiani.</div></details>
+      <details><summary>Come viene garantita l&rsquo;unicit&agrave;?</summary>
+        <div class="risposta">La configurazione approvata non viene riprodotta: materiali, proporzioni e pietre restano un&rsquo;identit&agrave; irripetibile. Il sistema UNICO &egrave; inoltre tutelato da propriet&agrave; industriale, con estensione internazionale in corso (PCT), e ogni opera &egrave; accompagnata da un chip NFC integrato e da un NFT abbinato come certificato digitale di autenticit&agrave;.</div></details>
+      <details><summary>UNICO &egrave; disponibile per uomo e donna?</summary>
+        <div class="risposta">S&igrave;. La stessa visione di alta gioielleria privata viene interpretata attraverso proporzioni, materiali e tessili dedicati, restando fedele all&rsquo;identit&agrave; di chi la indossa, senza differenze nel livello di cura o nell&rsquo;architettura dell&rsquo;opera.</div></details>
+    </div>
+  </div>
+</section>
+
+<!-- PANNELLO: RASSEGNA STAMPA -->
+<section class="pannello" id="pan-stampa">
+  <div class="interno">
+    <div class="filetto">Rassegna stampa</div>
+    <div class="intesta">Ne <i>parlano.</i></div>
+    <div class="ritagli">
+      <div class="ritaglio"><span class="testata">Testata</span><span class="riga-art">Titolo dell&rsquo;articolo</span><span class="anno">Anno</span></div>
+      <div class="ritaglio"><span class="testata">Testata</span><span class="riga-art">Titolo dell&rsquo;articolo</span><span class="anno">Anno</span></div>
+      <div class="ritaglio"><span class="testata">Testata</span><span class="riga-art">Titolo dell&rsquo;articolo</span><span class="anno">Anno</span></div>
+      <div class="nota-piccola">Sezione pronta per i ritagli: testata, titolo e anno si riempiono con gli articoli veri.</div>
+    </div>
+  </div>
+</section>
+
+<button class="indietro" id="indietro" style="display:none">&larr; Menu</button>
+
+<!-- CAPITOLO I, apertura -->
+<section class="cap" id="c1">
+  <div class="dentro">
+    <div class="blocco">
+      <div class="filetto">Maison &middot; Manifattura italiana</div>
+      <h1 class="titolo">Una persona.<br>Una creazione.<br><i><b>Mai replicata.</b></i></h1>
+      <p class="sotto">UNICO &egrave; un&rsquo;opera privata di alta gioielleria italiana, co-creata intorno alla persona e realizzata una sola volta.</p>
+      <div class="righe"><span><b>Un&rsquo;architettura riconoscibile</b></span><span>Infinite declinazioni</span><span>Una sola esecuzione</span></div>
+    </div>
+    <figure class="hero-video">
+      <video src="https://www.unico-luxury.com/assets/hero-bg.mp4" autoplay muted loop playsinline></video>
+    </figure>
+  </div>
+</section>
+
+<!-- CAPITOLO II -->
+<section class="cap centro" id="c2">
+  <div class="dentro">
+    <div class="filetto">Non un modello. Non una collezione.</div>
+    <div class="titolo">Un&rsquo;opera che nasce<br><i>intorno a una persona.</i></div>
+    <p class="sotto">Ogni configurazione &egrave; nata per una persona sola, e con lei cambia forma.</p>
+  </div>
+</section>
+
+<!-- CAPITOLO III -->
+<section class="cap centro" id="c3">
+  <div class="dentro">
+    <div class="titolo">Ad UNICO <i>non si arriva <b>per caso.</b></i></div>
+  </div>
+</section>
+
+<!-- CAPITOLO IV, accesso: le due porte -->
+<section class="cap centro" id="c4">
+  <div class="dentro"><div class="porta">
+    <div class="filetto">Presentazione privata</div>
+    <div class="titolo">Il tuo UNICO<br><b>non esiste ancora.</b></div>
+
+    <div class="codice">
+      <label class="etichetta-codice" for="codice">Cod. invito</label>
+      <input id="codice" maxlength="9" placeholder="UN&middot;0000" autocomplete="off" aria-label="Codice invito">
+      <button class="freccia" id="via-codice" aria-label="Conferma codice">&rarr;</button>
+    </div>
+    <div class="esito" id="esito-codice">Codice ricevuto. Sar&agrave; chi ti ha riservato l&rsquo;invito ad accompagnarti nella UNICO Experience.</div>
+
+    <div class="separa">oppure</div>
+    <button class="lista-link" id="apri-lista">Richiedi di entrare in lista d&rsquo;attesa</button>
+    <div class="apri" id="blocco-lista">
+      <input class="campo" placeholder="Nome e cognome">
+      <input class="campo" placeholder="Email">
+      <input class="campo" placeholder="Telefono / WhatsApp">
+      <button class="conferma" id="via-lista">Entra in lista d&rsquo;attesa</button>
+      <div class="esito" id="esito-lista">Ti contatteremo personalmente.</div>
+    </div>
+    <button class="scopri" id="scopri-maison">Scopri la maison</button>
+    <div class="nota-porta">Anteprima: i moduli non inviano nulla.</div>
+  </div></div>
+</section>
+
+<div id="cenno">Scorri<span class="goccia"></span></div>
+
+<!-- CANCELLO -->
+<div id="gate">
+  <div class="zona-marchio" id="zona-marchio" aria-label="Entra"></div>
+  <img class="sigillo-logo" id="logo-gate" src="https://www.unico-luxury.com/assets/unico.png" alt="UNICO">
+  <div class="motto">Una persona &middot; Una creazione &middot; Mai replicata</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+/* ================================================================ *
+ *  SCENA
+ * ================================================================ */
+const canvas   = document.getElementById('gl');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, powerPreference:'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+
+const scene  = new THREE.Scene();
+scene.fog    = new THREE.FogExp2(0x070605, 0.05);
+const camera = new THREE.PerspectiveCamera(42, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(0, 0, 8.4);
+
+const world = new THREE.Group();
+scene.add(world);
+
+// luci calde da gioiello
+scene.add(new THREE.AmbientLight(0x2a2316, 1.2));
+const chiave = new THREE.DirectionalLight(0xffe9c4, 3.2); chiave.position.set(3, 4, 5); scene.add(chiave);
+const taglio = new THREE.DirectionalLight(0xd9c08a, 1.2); taglio.position.set(-4, -2, 3); scene.add(taglio);
+const retro  = new THREE.PointLight(0xb79a63, 16, 30);    retro.position.set(0, 2.5, -4); scene.add(retro);
+const fronte = new THREE.PointLight(0xffe2b0, 22, 40);    fronte.position.set(-1.5, 0.5, 6.5); scene.add(fronte);
+
+/* ================================================================ *
+ *  IL MARCHIO UNICO IN 3D  (dal simbolo vero, 206x206)
+ *  Oro, semi-trasparente, con le orbite intorno.
+ * ================================================================ */
+const P = (x,y) => new THREE.Vector2((x-102)/93, (106-y)/93);
+
+// contorni ricavati pixel per pixel da simbolo-champagne.png (206x206):
+// il corpo superiore (barra, corona e griffe, un pezzo unico) e il padiglione sotto
+const CORPO = [
+  [70,21],[134,21],[134,24],[106,27],[117,38],[116,41],[122,43],[149,70],[170,60],
+  [150,26],[149,23],[151,22],[196,71],[121,171],[119,169],[121,165],[175,75],[150,74],
+  [129.5,120],[74.5,120],[54,74],[28,75],[80,161],[84,168],[83,171],[7,72],[52,22],[54,25],
+  [33,60],[55,70],[81,43],[88,41],[87,37],[97,27],[69,24],
+].map(v => P(v[0], v[1]));
+// la punta sotto: simmetrica, larga come la base della gemma, con un taglio netto di 2 px sopra
+const PADIGLIONE = [ [74.5,122],[129.5,122],[102,186] ].map(v => P(v[0], v[1]));
+const GEMMA = [ P(102,27), P(149,70), P(129,120), P(102,185), P(74,120), P(54,74) ];  // sagoma piena, per la polvere
+
+const oroMat = new THREE.MeshStandardMaterial({
+  color:0xd9c08a, metalness:0.9, roughness:0.22, flatShading:false,
+  emissive:0x3a2c12, transparent:true, opacity:0.62, depthWrite:true,  // scrive la profondita': la polvere dietro non trapassa
+  side:THREE.DoubleSide,
+});
+
+const marchio = new THREE.Group();
+function pezzo(punti, spessore){
+  const shape = new THREE.Shape(punti);
+  // la smussatura va verso l'interno: il contorno resta identico al marchio e il taglio tra gemma e punta resta netto
+  const g = new THREE.ExtrudeGeometry(shape, { depth:spessore, bevelEnabled:true, bevelThickness:0.03, bevelSize:0.012, bevelOffset:-0.012, bevelSegments:3 });
+  g.translate(0, 0, -spessore/2);
+  g.computeVertexNormals();
+  const m = new THREE.Mesh(g, oroMat);
+  m.renderOrder = 1;                 // disegnato prima della polvere, che cosi' resta dietro
+  marchio.add(m);
+}
+pezzo(CORPO, 0.1);
+pezzo(PADIGLIONE, 0.1);      // stesso spessore del corpo: la punta resta a filo, senza sporgere
+marchio.scale.setScalar(1.9);
+world.add(marchio);
+
+// orbite sottili intorno al marchio
+const orbMat = new THREE.LineBasicMaterial({ color:0xb79a63, transparent:true, opacity:0.22,
+  blending:THREE.AdditiveBlending, depthWrite:false });
+function anelloOrbita(r, inclinazione){
+  const pts=[]; for(let i=0;i<=120;i++){ const a=i/120*Math.PI*2; pts.push(new THREE.Vector3(Math.cos(a)*r, 0, Math.sin(a)*r)); }
+  const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), orbMat);
+  l.rotation.x = inclinazione; world.add(l); return l;
+}
+const orb1 = anelloOrbita(3.0, Math.PI/2.4);
+const orb2 = anelloOrbita(3.6, Math.PI/1.8);
+
+/* ================================================================ *
+ *  POLVERE  (leggerissima: disegna le configurazioni dei gioielli
+ *  delle foto del sito — losanga, stella incisa, farfalla, fiocco)
+ * ================================================================ */
+// tanti granelli piccoli: una polvere piu' fine ed elegante (sul telefono meno, perche' resti fluida)
+const TELEFONO = innerWidth < 900 || matchMedia('(pointer: coarse)').matches;
+const N = TELEFONO ? 7000 : 16000;
+const rnd = new Float32Array(N*4);
+let seme = 123456789;
+const caso = () => { seme = (seme*1664525 + 1013904223) & 0x7fffffff; return seme / 0x7fffffff; };
+for(let i=0;i<N*4;i++) rnd[i] = caso();
+
+// punti dentro un poligono stellato rispetto al suo centro (ventaglio dal baricentro)
+function dentroFan(poli, scala, cx, cy, spessoreZ){
+  const a = new Float32Array(N*3);
+  let bx=0, by=0; poli.forEach(v=>{ bx+=v.x; by+=v.y; }); bx/=poli.length; by/=poli.length;
+  const tri = []; let areaTot = 0;
+  for(let k=0;k<poli.length;k++){
+    const A={x:bx,y:by}, B=poli[k], C=poli[(k+1)%poli.length];
+    const area = Math.abs((B.x-A.x)*(C.y-A.y) - (C.x-A.x)*(B.y-A.y))/2;
+    tri.push({A,B,C,area}); areaTot += area;
+  }
+  for(let i=0;i<N;i++){
+    let scelta = rnd[i*4]*areaTot, t = tri[0];
+    for(const tt of tri){ if(scelta <= tt.area){ t = tt; break; } scelta -= tt.area; }
+    let u = rnd[i*4+1], v = rnd[i*4+2];
+    if(u+v > 1){ u = 1-u; v = 1-v; }
+    a[i*3]   = cx + (t.A.x + (t.B.x-t.A.x)*u + (t.C.x-t.A.x)*v)*scala;
+    a[i*3+1] = cy + (t.A.y + (t.B.y-t.A.y)*u + (t.C.y-t.A.y)*v)*scala;
+    a[i*3+2] = (rnd[i*4+3]-0.5)*spessoreZ;
+  }
+  return a;
+}
+
+// punto dentro un'ellisse ruotata e traslata
+function inEllisse(out, i, ax, by, cx, cy, rot, z){
+  const r = Math.sqrt(rnd[i*4]), ang = rnd[i*4+1]*Math.PI*2;
+  const ex = r*Math.cos(ang)*ax, ey = r*Math.sin(ang)*by;
+  const c = Math.cos(rot), s = Math.sin(rot);
+  out[i*3]   = cx + ex*c - ey*s;
+  out[i*3+1] = cy + ex*s + ey*c;
+  out[i*3+2] = (rnd[i*4+3]-0.5)*z;
+}
+
+// la stella a otto punte incisa sulla gemma (rosa dei venti)
+function formaStella(){
+  const v=[]; for(let k=0;k<16;k++){ const a=k*Math.PI/8 - Math.PI/2;
+    const rad=(k%2===0)? 2.3 : 0.62; v.push(new THREE.Vector2(Math.cos(a)*rad, Math.sin(a)*rad)); }
+  return dentroFan(v, 1, 0, 0.1, 0.4);
+}
+
+// la farfalla di pietre
+function formaFarfalla(){
+  const a = new Float32Array(N*3);
+  for(let i=0;i<N;i++){
+    const u = rnd[i*4+2];
+    if(u < 0.34)      inEllisse(a, i, 1.45, 1.0, 1.18, 0.62, 0.42, 0.4);    // ala alta destra
+    else if(u < 0.68) inEllisse(a, i, 1.45, 1.0, -1.18, 0.62, Math.PI-0.42, 0.4); // ala alta sinistra
+    else if(u < 0.81) inEllisse(a, i, 0.85, 0.62, 0.72, -0.78, -0.5, 0.4);  // ala bassa destra
+    else if(u < 0.94) inEllisse(a, i, 0.85, 0.62, -0.72, -0.78, Math.PI+0.5, 0.4); // ala bassa sinistra
+    else              inEllisse(a, i, 0.13, 0.95, 0, 0, 0, 0.3);            // corpo
+  }
+  return a;
+}
+
+// il fiocco annodato (il foulard con l'opera)
+function formaFiocco(){
+  const a = new Float32Array(N*3);
+  for(let i=0;i<N;i++){
+    const u = rnd[i*4+2];
+    if(u < 0.34)      inEllisse(a, i, 1.65, 0.7, 1.55, 0.5, 0.38, 0.4);     // ansa destra
+    else if(u < 0.68) inEllisse(a, i, 1.65, 0.7, -1.55, 0.5, Math.PI-0.38, 0.4); // ansa sinistra
+    else if(u < 0.82) inEllisse(a, i, 0.28, 1.35, 0.8, -1.35, 0.5, 0.4);    // coda destra
+    else if(u < 0.96) inEllisse(a, i, 0.28, 1.35, -0.8, -1.35, -0.5, 0.4);  // coda sinistra
+    else              inEllisse(a, i, 0.42, 0.45, 0, 0.15, 0, 0.35);        // nodo
+  }
+  return a;
+}
+
+function formaDispersa(){
+  const a = new Float32Array(N*3);
+  for(let i=0;i<N;i++){
+    const r = 6 + rnd[i*4]*8, th = rnd[i*4+1]*Math.PI*2, ph = Math.acos(rnd[i*4+2]*2-1);
+    a[i*3] = Math.sin(ph)*Math.cos(th)*r; a[i*3+1] = Math.cos(ph)*r; a[i*3+2] = Math.sin(ph)*Math.sin(th)*r;
+  }
+  return a;
+}
+
+const MARCHIO_Y = 0.55;     // centro del marchio al cancello
+const FINE_Y    = 2.18;     // centro del marchio piccolo, sopra le due porte
+const FINE_S    = 0.5;      // sua scala
+
+// il punto di luce finale: un nucleo denso e quattro raggi, la scintilla di un diamante
+function formaPuntoLuce(cx, cy, cz, sc = 1){
+  const a = new Float32Array(N*3);
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1],[0.707,0.707],[-0.707,0.707],[0.707,-0.707],[-0.707,-0.707]];
+  for(let i=0;i<N;i++){
+    const u = rnd[i*4+2];
+    if(u < 0.7){
+      const r = Math.sqrt(-2*Math.log(Math.max(1e-6, rnd[i*4])))*0.032*sc;
+      const ang = rnd[i*4+1]*6.2832;
+      a[i*3] = cx + Math.cos(ang)*r; a[i*3+1] = cy + Math.sin(ang)*r; a[i*3+2] = cz;
+    } else {
+      const k = u < 0.92 ? Math.floor(rnd[i*4]*4) : 4 + Math.floor(rnd[i*4]*4);
+      const lun = (k < 4 ? (k < 2 ? 0.78 : 0.58) : 0.24) * sc;
+      const L = Math.pow(rnd[i*4+1], 2.4) * lun;              // fitto al centro, sottile in punta
+      const sp = (rnd[i*4+3]-0.5) * 0.02 * (1 - L/lun);
+      a[i*3]   = cx + dirs[k][0]*L - dirs[k][1]*sp;
+      a[i*3+1] = cy + dirs[k][1]*L + dirs[k][0]*sp;
+      a[i*3+2] = cz;
+    }
+  }
+  return a;
+}
+
+// il bordo del marchio, per il respiro: un punto sul contorno e la normale verso l'esterno
+function campionaContorno(){
+  const seg = []; let tot = 0;
+  for(const poli of [CORPO, PADIGLIONE]){
+    let area = 0;
+    for(let k=0;k<poli.length;k++){ const a=poli[k], b=poli[(k+1)%poli.length]; area += a.x*b.y - b.x*a.y; }
+    const verso = area > 0 ? 1 : -1;
+    for(let k=0;k<poli.length;k++){
+      const a=poli[k], b=poli[(k+1)%poli.length];
+      const dx=b.x-a.x, dy=b.y-a.y, l=Math.hypot(dx,dy);
+      if(l < 1e-6) continue;
+      seg.push({ a, dx, dy, l, nx:verso*dy/l, ny:-verso*dx/l }); tot += l;
+    }
+  }
+  const bx = new Float32Array(N), by = new Float32Array(N), nx = new Float32Array(N), ny = new Float32Array(N);
+  for(let i=0;i<N;i++){
+    let s = rnd[i*4+1]*tot, sg = seg[seg.length-1];
+    for(const q of seg){ if(s <= q.l){ sg = q; break; } s -= q.l; }
+    const f = Math.min(1, s/sg.l);
+    bx[i] = sg.a.x + sg.dx*f; by[i] = sg.a.y + sg.dy*f; nx[i] = sg.nx; ny[i] = sg.ny;
+  }
+  return { bx, by, nx, ny };
+}
+
+const SH_LOSANGA = dentroFan(GEMMA, 2.0, 0, -0.3, 0.5);
+const SH_STELLA  = formaStella();
+const SH_FARFALLA= formaFarfalla();
+const SH_FIOCCO  = formaFiocco();
+const SH_FINE    = formaPuntoLuce(0, FINE_Y, 0.14);   // la nuvola finisce nel cuore del marchio
+const SH_CUORE   = formaPuntoLuce(0, MARCHIO_Y, 0.4, 2.2);   // il cuore del marchio grande, dove entra il treno
+const SH_VIA     = formaDispersa();
+const CONTORNO   = campionaContorno();
+
+// in fondo al sito la polvere si posa in basso, poi sale verso il marchio e diventa il punto di luce
+function formaBasso(){
+  const a = new Float32Array(N*3);
+  for(let i=0;i<N;i++){
+    a[i*3]   = (rnd[i*4]*2-1)*6.5;
+    a[i*3+1] = -3.65 + rnd[i*4+1]*0.7;
+    a[i*3+2] = -1.5 + rnd[i*4+2]*2.5;
+  }
+  return a;
+}
+const SH_BASSO = formaBasso();
+
+// Dentro il sito ogni sezione ha la sua configurazione. Lo scroll sceglie QUALE,
+// ma la polvere ci va sempre alla stessa velocita' e la completa comunque,
+// sia che ci si fermi sia che si scorra velocissimi.
+const STAZIONI = [
+  { da:0.00, s:SH_LOSANGA },
+  { da:0.20, s:SH_STELLA  },
+  { da:0.45, s:SH_FARFALLA},
+  { da:0.63, s:SH_FIOCCO  },
+  { da:0.78, s:SH_BASSO, poi:SH_FINE },   // l'ultima: si posa in basso, poi sale e diventa il punto di luce
+];
+const PASSO = 2.8, SCAGLIONE = 1.4;      // ogni granello viaggia 2,8 s, le partenze si spargono su 1,4 s
+const SALITA_S = 5.0;                    // la salita finale dal basso al cuore del marchio
+const posStaz = new Float32Array(N*3);   // dove sta ora la polvere del sito
+const daStaz  = new Float32Array(N*3);   // da dove e' partito l'ultimo viaggio
+posStaz.set(SH_LOSANGA); daStaz.set(SH_LOSANGA);
+let stazione = 0, stazT0 = -100, stazFerma = true;
+let arrivoS = 0;                          // quanto la polvere e' raccolta nel punto di luce, nel tempo
+function stazioneDi(p){ let k = STAZIONI.length-1; while(k > 0 && p < STAZIONI[k].da) k--; return k; }
+const M_INIZIO = 0.79, M_PIENO = 0.84;   // il marchio piccolo c'e' gia' quando appare l'ultima sezione
+
+// la salita dal basso: ogni granello parte un po' dopo l'altro, sale e solo in alto si stringe nel punto
+function salita(i, l, out){
+  const j = i*3;
+  let u = (l - rnd[i*4+3]*0.4) / 0.6;
+  u = u <= 0 ? 0 : u >= 1 ? 1 : u;
+  const uy = u*u*(3 - 2*u), ux = Math.pow(u, 2.2);
+  out[0] = SH_BASSO[j]   + (SH_FINE[j]   - SH_BASSO[j])*ux;
+  out[1] = SH_BASSO[j+1] + (SH_FINE[j+1] - SH_BASSO[j+1])*uy;
+  out[2] = SH_BASSO[j+2] + (SH_FINE[j+2] - SH_BASSO[j+2])*ux;
+}
+
+const geo = new THREE.BufferGeometry();
+const posizioni = new Float32Array(N*3);
+posizioni.set(SH_VIA);
+geo.setAttribute('position', new THREE.BufferAttribute(posizioni, 3));
+
+const aCol = new Float32Array(N*3), aDim = new Float32Array(N), aSem = new Float32Array(N);
+const aLuce = new Float32Array(N).fill(1);          // si accende sul fronte delle onde
+const cAvorio = new THREE.Color(0xefe8d9), cOro = new THREE.Color(0xd9c08a), cCupo = new THREE.Color(0x8a7038);
+const tmp = new THREE.Color();
+for(let i=0;i<N;i++){
+  const m = rnd[i*4];
+  if(m < 0.5)      tmp.copy(cOro).lerp(cAvorio, rnd[i*4+1]*0.7);
+  else if(m < 0.9) tmp.copy(cOro).lerp(cCupo, rnd[i*4+1]);
+  else             tmp.copy(cAvorio);
+  aCol[i*3]=tmp.r; aCol[i*3+1]=tmp.g; aCol[i*3+2]=tmp.b;
+  aDim[i] = 0.22 + rnd[i*4+3]*0.75;
+  aSem[i] = rnd[i*4]*10;
+}
+geo.setAttribute('aCol', new THREE.BufferAttribute(aCol,3));
+geo.setAttribute('aDim', new THREE.BufferAttribute(aDim,1));
+geo.setAttribute('aSem', new THREE.BufferAttribute(aSem,1));
+geo.setAttribute('aLuce', new THREE.BufferAttribute(aLuce,1));
+
+const polvereMat = new THREE.ShaderMaterial({
+  transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+  uniforms:{ uT:{value:0}, uS:{value:22*renderer.getPixelRatio()}, uA:{value:0.38} },
+  vertexShader:`
+    attribute vec3 aCol; attribute float aDim; attribute float aSem; attribute float aLuce;
+    uniform float uT; uniform float uS;
+    varying vec3 vC; varying float vB;
+    void main(){
+      vC = aCol;
+      vB = (0.55 + 0.45*sin(uT*1.2 + aSem*6.2831)) * aLuce;
+      vec4 mv = modelViewMatrix * vec4(position,1.0);
+      gl_PointSize = aDim * uS * (1.0 / -mv.z) * (1.0 + (aLuce-1.0)*0.55);
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader:`
+    precision highp float;
+    uniform float uA;
+    varying vec3 vC; varying float vB;
+    void main(){
+      float d = length(gl_PointCoord - 0.5);
+      if(d > 0.5) discard;
+      float nucleo = smoothstep(0.5, 0.0, d);
+      float alone  = smoothstep(0.5, 0.15, d) * 0.5;
+      gl_FragColor = vec4(vC * (0.75 + nucleo*0.6), (nucleo + alone) * vB * uA);
+    }`
+});
+const polvere = new THREE.Points(geo, polvereMat);
+polvere.renderOrder = 2;             // dopo il marchio: i punti dietro di lui vengono occlusi
+world.add(polvere);
+
+// il bagliore del diamante finale: alone caldo e quattro raggi sottili
+function texScintilla(){
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d');
+  const rg = g.createRadialGradient(128,128,0,128,128,128);
+  rg.addColorStop(0,'rgba(255,251,240,1)'); rg.addColorStop(0.07,'rgba(255,238,196,0.92)');
+  rg.addColorStop(0.24,'rgba(217,192,138,0.32)'); rg.addColorStop(1,'rgba(217,192,138,0)');
+  g.fillStyle = rg; g.fillRect(0,0,256,256);
+  g.globalCompositeOperation = 'lighter';
+  const raggio = (ang, lun, sp) => {
+    g.save(); g.translate(128,128); g.rotate(ang);
+    const lg = g.createLinearGradient(-lun,0,lun,0);
+    lg.addColorStop(0,'rgba(255,240,200,0)'); lg.addColorStop(0.5,'rgba(255,248,230,0.95)'); lg.addColorStop(1,'rgba(255,240,200,0)');
+    g.fillStyle = lg; g.beginPath(); g.moveTo(-lun,0); g.lineTo(0,-sp); g.lineTo(lun,0); g.lineTo(0,sp); g.closePath(); g.fill();
+    g.restore();
+  };
+  raggio(0,128,4.5); raggio(Math.PI/2,104,4); raggio(Math.PI/4,52,2.6); raggio(-Math.PI/4,52,2.6);
+  const tx = new THREE.CanvasTexture(c); tx.colorSpace = THREE.SRGBColorSpace; return tx;
+}
+const luceMat = new THREE.SpriteMaterial({ map:texScintilla(), transparent:true, opacity:0,
+  blending:THREE.AdditiveBlending, depthWrite:false, depthTest:false, toneMapped:false });
+const luceDiamante = new THREE.Sprite(luceMat);
+luceDiamante.position.set(0, FINE_Y, 0.16);
+luceDiamante.renderOrder = 3;
+world.add(luceDiamante);
+// la stessa scintilla, grande, nel cuore del marchio del cancello quando il treno e' entrato
+const luceCuoreMat = luceMat.clone();
+const luceCuore = new THREE.Sprite(luceCuoreMat);
+luceCuore.position.set(0, MARCHIO_Y, 0.45);
+luceCuore.renderOrder = 3;
+luceCuore.visible = false;
+world.add(luceCuore);
+
+/* ================================================================ *
+ *  SCORRIMENTO  (nativo, smussato nel ciclo)
+ * ================================================================ */
+let progress = 0, pDolce = 0, intro = 0;
+function leggiScroll(){
+  const d = document.scrollingElement || document.documentElement;
+  progress = THREE.MathUtils.clamp(d.scrollTop / Math.max(1, d.scrollHeight - d.clientHeight), 0, 1);
+}
+addEventListener('scroll', leggiScroll, { passive:true });
+// al cancello la pagina non scorre: niente rotella persa prima di entrare
+if('scrollRestoration' in history) history.scrollRestoration = 'manual';
+window.scrollTo(0,0);
+(document.scrollingElement || document.documentElement).style.overflow = 'hidden';
+
+const capitoli = {
+  c1: document.getElementById('c1'),
+  c2: document.getElementById('c2'),
+  c3: document.getElementById('c3'),
+  c4: document.getElementById('c4'),
+};
+const FIN = { c1:[0.00,0.12], c2:[0.26,0.42], c3:[0.56,0.70], c4:[0.84,1.03] };
+
+function finestra(p, a, b, f=0.055){
+  if(p < a-f || p > b+f) return 0;
+  if(p < a) return (p-(a-f))/f;
+  if(p > b) return 1-(p-b)/f;
+  return 1;
+}
+function dipingi(p){
+  const velo = Math.min(1, intro*1.3);
+  let massimo = 0;
+  for(const k in capitoli){
+    const v = finestra(p, FIN[k][0], FIN[k][1]) * velo;
+    if(v > massimo) massimo = v;
+    const el = capitoli[k];
+    el.style.opacity = v;
+    el.style.pointerEvents = v > 0.5 ? 'auto' : 'none';
+    el.style.transform = `translateY(${(1-v)*16}px)`;
+  }
+  // la polvere resta dietro: quando un testo e' in lettura si attenua ancora,
+  // ma alla fine, raccolta nel cuore del marchio, si accende
+  const fineL = arrivoS * Math.min(1, intro);
+  polvereMat.uniforms.uA.value = (0.27 + (1-Math.min(1,intro))*0.2) * (1 - 0.45*massimo) * (1 + fineL*fineL*2.2);
+  document.getElementById('cenno').style.opacity = intro>0.9 ? Math.max(0, 1 - p/0.05) * 0.7 : 0;
+}
+
+/* ================================================================ *
+ *  TRASFORMAZIONE DELLA POLVERE
+ * ================================================================ */
+function morbida(x){ return x<0.5 ? 4*x*x*x : 1 - Math.pow(-2*x+2,3)/2; }
+
+// Al cancello la polvere attraversa cinque scene, una dopo l'altra, all'infinito:
+//   I   lo specchio d'acqua sotto il marchio
+//   II  il pulviscolo d'atelier che scende e gli scivola intorno
+//   III la seta che lo avvolge come un foulard
+//   IV  le opere: stella incisa, farfalla, fiocco, dietro di lui
+//   V   il respiro del diamante, luce che esce dai bordi e rientra
+// Il mouse la sposta come una mano nell'acqua (lenta, con inerzia).
+// Il click la stende in uno specchio e ci lancia il sasso: tre onde, poi si entra.
+let ondaT0 = -10;
+let mwX = 99, mwY = 99, mouseVisto = false;   // mouse nel mondo, inseguito piano
+// ogni granello ha il suo ritmo: le partenze si spargono su 9 s, il viaggio dura 5 s,
+// e la forma comincia a smontarsi quando due terzi dei granelli l'hanno completata
+const SCENE = 7, VIAGGIO = 5.0, SPARGI = 9.0;
+const PERIODO = SPARGI*2/3 + VIAGGIO;          // 11 s: a quel punto due terzi sono arrivati e i primi ripartono
+// dopo il click: specchio, tre onde e subito il treno di luce che entra nel cuore del marchio
+const T_TRENO = 4.4, D_TRENO = 6.0, CORSA = 1.9;
+const offs = new Float32Array(N*3);           // spostamento lasciato dal mouse, che si riassorbe piano
+const _a = [0,0,0,1], _b = [0,0,0,1], _g = [0,0,0,1], _d = [0,0,0,1];   // il quarto valore: visibilita'
+
+function scena(k, i, t, out){
+  const r0 = rnd[i*4], r1 = rnd[i*4+1], r2 = rnd[i*4+2], r3 = rnd[i*4+3];
+  out[3] = 1;
+  if(k === 0){                                  // I, specchio d'acqua, mosso da onde lunghe
+    const x = (r0*2-1)*6.5, z = -4.2 + r1*6.6;
+    out[0] = x + Math.sin(t*0.3 + z*0.8)*0.12;
+    out[1] = -1.75 + 0.16*Math.sin(x*0.9 + t*0.7) + 0.11*Math.cos(z*1.3 - t*0.55) + 0.05*Math.sin((x+z)*2.1 + t*1.1);
+    out[2] = z;
+  } else if(k === 1){                            // II, pulviscolo d'atelier
+    const vel = 0.1 + r3*0.14;
+    const lato = r0 < 0.5 ? -1 : 1;                // ogni granello resta dal suo lato: niente salti davanti al marchio
+    let x = lato*Math.abs((r0*2-1)*6 + Math.sin(t*0.25 + r0*20)*0.15);
+    const ph = (r1*8.8 + t*vel) % 8.8;
+    const y = 4.3 - ph;
+    out[3] = Math.min(1, ph/0.6, (8.8-ph)/0.6);   // si spegne quando ricomincia dall'alto
+    const dy = (y - MARCHIO_Y)/2.3;
+    if(Math.abs(dy) < 1){                         // scivola intorno al marchio, non lo tocca
+      const ax = Math.abs(x), lim = 2.5;
+      if(ax < lim){ const c = Math.cos(dy*Math.PI/2); x = lato*(ax + (lim-ax)*c*c*0.9); }
+    }
+    out[0] = x; out[1] = y; out[2] = (r2*2-1)*2.2 - 0.6;
+  } else if(k === 2){                            // III, la seta che lo veste
+    const s = (r0 + t*0.02) % 1, w = r1*2-1;
+    out[3] = Math.min(1, s/0.06, (1-s)/0.06);      // si spegne ai capi del nastro
+    const ang = s*Math.PI*3.2 + (i & 1)*Math.PI + t*0.1;
+    const rr = 2.45 + 0.25*Math.sin(s*7 + t*0.4);
+    out[0] = Math.cos(ang)*rr + w*0.05;
+    out[1] = -3.6 + s*7.6 + w*0.3*(0.6 + 0.4*Math.sin(s*9 + t*0.6));
+    out[2] = Math.sin(ang)*rr*0.85;
+  } else if(k <= 5){                             // IV, le opere dietro al marchio, vive: ruotano, respirano, brillano
+    const S = k === 3 ? SH_STELLA : k === 4 ? SH_FARFALLA : SH_FIOCCO;
+    const j = i*3;
+    const rot = k === 3 ? t*0.06 : Math.sin(t*0.22)*0.12;
+    const sc  = 1.5*(1 + 0.05*Math.sin(t*0.6 + (k === 4 ? Math.abs(S[j])*1.4 : 0)));   // la farfalla batte le ali
+    const cr = Math.cos(rot), sr = Math.sin(rot);
+    const x0 = S[j]*sc, y0 = S[j+1]*sc;
+    const giro = t*(0.5 + r2*0.6) + r0*30;           // ogni granello gira piano nel suo posto
+    out[0] = x0*cr - y0*sr + Math.cos(giro)*0.07;
+    out[1] = x0*sr + y0*cr + MARCHIO_Y + Math.sin(giro)*0.07;
+    out[2] = S[j+2] - 1.3 + Math.sin(t*0.3 + r1*20)*0.15;
+  } else {                                       // V, il respiro del diamante
+    const resp = 0.06 + 0.16*(0.5 + 0.5*Math.sin(t*0.8)) + r2*r2*0.35;
+    out[0] = CONTORNO.bx[i]*1.9 + CONTORNO.nx[i]*resp;
+    out[1] = CONTORNO.by[i]*1.9 + CONTORNO.ny[i]*resp + MARCHIO_Y;
+    out[2] = (r3-0.5)*0.35;
+  }
+}
+
+function posCancello(i, t, out){
+  // il tempo proprio del granello: parte quando la polvere e' arrivata, sfalsato dagli altri
+  const tau = t - 3.5 - rnd[i*4+3]*SPARGI;
+  let k = 0, b = 0;
+  if(tau > 0){
+    const n = Math.floor(tau / PERIODO);
+    k = n % SCENE;
+    b = (tau - n*PERIODO) / VIAGGIO;
+    b = b >= 1 ? 1 : b*b*b*(b*(b*6 - 15) + 10);        // curva morbidissima, senza strappi
+  }
+  scena(k, i, t, _a);
+  if(b > 0){
+    scena((k+1) % SCENE, i, t, _b);
+    // il granello non va dritto: fa un piccolo arco, come portato da una corrente
+    const arco = Math.sin(Math.PI*b)*0.4, dir = rnd[i*4+2]*6.2832;
+    out[0] = _a[0] + (_b[0]-_a[0])*b + Math.cos(dir)*arco;
+    out[1] = _a[1] + (_b[1]-_a[1])*b + Math.sin(dir)*arco*0.7;
+    out[2] = _a[2] + (_b[2]-_a[2])*b + arco*0.35;
+    out[3] = Math.min(b < 1 ? _a[3] : 1, _b[3]);
+  } else { out[0] = _a[0]; out[1] = _a[1]; out[2] = _a[2]; out[3] = _a[3]; }
+}
+
+function posSpecchio(i, t, out){                 // lo specchio d'acqua dove cade il sasso: vivo, mai fermo
+  const r0 = Math.sqrt(rnd[i*4])*5.8, a0 = rnd[i*4+1]*6.2832;
+  const a = a0 + t*(0.05 + 0.22/(1 + r0*0.8));    // l'acqua gira piano, un po' piu' svelta verso il centro
+  const r = r0 + Math.sin(t*0.7 + rnd[i*4+3]*12)*0.09 + Math.sin(r0*1.6 - t*1.1)*0.06;   // respira
+  out[0] = Math.cos(a)*r;
+  out[1] = MARCHIO_Y + Math.sin(a)*r*0.92;
+  out[2] = -0.9 + (rnd[i*4+2]-0.5)*0.12 + Math.sin(r0*1.3 - t*1.4)*0.12;                // lievi increspature
+}
+
+let luceSporca = false;
+function trasforma(p, t, dt){
+  // la configurazione del sito: la sceglie lo scroll, la polvere la raggiunge col suo tempo
+  const vuole = stazioneDi(p);
+  if(vuole !== stazione){ daStaz.set(posStaz); stazione = vuole; stazT0 = t; stazFerma = false; }
+  const st = STAZIONI[stazione], tS = t - stazT0, tutti = PASSO + SCAGLIONE;
+  const sali = !!st.poi && tS > tutti;
+  const lin = sali ? Math.min(1, (tS - tutti)/SALITA_S) : 0;
+  const arrivoV = sali ? THREE.MathUtils.clamp((lin - 0.55)/0.45, 0, 1) : 0;
+  arrivoS += (arrivoV - arrivoS)*(1 - Math.exp(-3*dt));
+  if(!stazFerma){
+    for(let i=0;i<N;i++){
+      const j = i*3;
+      if(sali){
+        salita(i, lin, _a);
+        posStaz[j] = _a[0]; posStaz[j+1] = _a[1]; posStaz[j+2] = _a[2];
+      } else {
+        let u = (tS - rnd[i*4+3]*SCAGLIONE) / PASSO;
+        u = u <= 0 ? 0 : u >= 1 ? 1 : u*u*u*(u*(u*6 - 15) + 10);
+        const arco = Math.sin(Math.PI*u)*0.25, dir = rnd[i*4+2]*6.2832;   // un piccolo arco, come portati da una corrente
+        posStaz[j]   = daStaz[j]   + (st.s[j]   - daStaz[j]  )*u + Math.cos(dir)*arco;
+        posStaz[j+1] = daStaz[j+1] + (st.s[j+1] - daStaz[j+1])*u + Math.sin(dir)*arco*0.7;
+        posStaz[j+2] = daStaz[j+2] + (st.s[j+2] - daStaz[j+2])*u;
+      }
+    }
+    if(tS >= tutti + (st.poi ? SALITA_S : 0)) stazFerma = true;   // tutti arrivati: ci si ferma fino al prossimo cambio
+  }
+  const e = morbida(intro);
+  if(e > 0.999){
+    posizioni.set(posStaz);
+    if(luceSporca){ aLuce.fill(1); geo.attributes.aLuce.needsUpdate = true; luceSporca = false; }
+  } else {
+    const avvio  = morbida(Math.min(1, t/3.5));          // all'apertura la polvere arriva da lontano
+    const kAcqua = 1 - Math.exp(-1.1*dt);                // l'acqua risponde piano e si richiude piano
+    const eClick = ondaT0 >= 0 ? t - ondaT0 : -1;
+    for(let i=0;i<N;i++){
+      const j = i*3;
+      posCancello(i, t, _g);
+      if(avvio < 1){
+        _g[0] = SH_VIA[j] + (_g[0]-SH_VIA[j])*avvio;
+        _g[1] = SH_VIA[j+1] + (_g[1]-SH_VIA[j+1])*avvio;
+        _g[2] = SH_VIA[j+2] + (_g[2]-SH_VIA[j+2])*avvio;
+      }
+      // al click la polvere si stende nello specchio
+      let dd = 0;
+      if(eClick > 0){
+        dd = (eClick - rnd[i*4+2]*0.35) / 1.4;
+        dd = dd <= 0 ? 0 : dd >= 1 ? 1 : morbida(dd);
+        if(dd > 0){
+          posSpecchio(i, t, _d);
+          _g[0] += (_d[0]-_g[0])*dd; _g[1] += (_d[1]-_g[1])*dd; _g[2] += (_d[2]-_g[2])*dd;
+        }
+      }
+      const vis = _g[3] + (1 - _g[3])*dd;   // granelli che ricominciano il giro: spenti per un istante
+      // la mano nell'acqua: il bersaglio si muove, la polvere lo segue con lentezza.
+      // Il confronto si fa come lo vede l'occhio, alla profondita' di ogni granello
+      const sP = camera.position.z / Math.max(0.5, camera.position.z - _g[2]);
+      const dxm = _g[0]*sP - mwX, dym = _g[1]*sP - mwY, d2m = dxm*dxm + dym*dym;
+      let tx = 0, ty = 0, tz = 0;
+      if(d2m < 9){ const f = Math.exp(-d2m/1.6)*0.55; tx = dxm*f/sP; ty = dym*f/sP; tz = f*0.35; }
+      offs[j]   += (tx - offs[j])*kAcqua;
+      offs[j+1] += (ty - offs[j+1])*kAcqua;
+      offs[j+2] += (tz - offs[j+2])*kAcqua;
+      _g[0] += offs[j]; _g[1] += offs[j+1]; _g[2] += offs[j+2];
+      // tre onde dal sasso, alla stessa velocita': l'acqua ferma si abbassa di luce,
+      // il fronte dell'onda si accende, cosi' i tre cerchi si leggono bene
+      let luce = 1;
+      if(dd > 0){
+        luce = 1 - 0.5*dd;
+        for(let o=0; o<3; o++){
+          const eta = eClick - 1.3 - o*1.2;
+          if(eta > 0 && eta < 6.0){
+            const dx = _g[0], dy = _g[1]-MARCHIO_Y;
+            const d = Math.sqrt(dx*dx + dy*dy) + 1e-4;
+            const R = eta*1.25;
+            const amp = Math.exp(-(d-R)*(d-R)/0.11) * Math.exp(-eta*0.22) * (o === 0 ? 1 : o === 1 ? 0.88 : 0.78) * dd
+                      * Math.min(1, eta/0.5);   // ogni onda nasce piano, senza scatto
+            _g[0] += dx/d*amp*0.42; _g[1] += dy/d*amp*0.42; _g[2] += amp*1.1;
+            luce += amp*3.6;
+          }
+        }
+      }
+      // dopo le onde, il treno: i granelli partono uno dopo l'altro girando intorno al marchio
+      // (l'ordine segue l'angolo, come vagoni in fila) e curvando entrano nel suo cuore
+      if(eClick > T_TRENO){
+        const ordine = rnd[i*4+1]*0.94 + rnd[i*4+3]*0.06;
+        let u = (eClick - T_TRENO - ordine*(D_TRENO - CORSA)) / CORSA;
+        if(u > 0){
+          u = u >= 1 ? 1 : u*u*(3 - 2*u);
+          const tx = SH_CUORE[j], ty = SH_CUORE[j+1], tz = SH_CUORE[j+2];
+          const dx = _g[0]-tx, dy = _g[1]-ty;
+          const r0 = Math.sqrt(dx*dx + dy*dy), th = Math.atan2(dy, dx) + u*Math.PI*1.3;
+          const r  = r0*Math.pow(1-u, 1.25);
+          _g[0] = tx + Math.cos(th)*r;
+          _g[1] = ty + Math.sin(th)*r;
+          _g[2] = _g[2] + (tz - _g[2])*Math.pow(u, 0.8);
+          luce = u < 1 ? luce + 0.9*Math.sin(Math.PI*u) : 1.7;   // la scia si accende, all'arrivo scintilla
+        }
+      }
+      aLuce[i] = (1 + (luce - 1)*(1 - e)) * (1 - (1 - vis)*(1 - e));
+      posizioni[j]   = _g[0] + (posStaz[j]   - _g[0])*e;
+      posizioni[j+1] = _g[1] + (posStaz[j+1] - _g[1])*e;
+      posizioni[j+2] = _g[2] + (posStaz[j+2] - _g[2])*e;
+    }
+    geo.attributes.aLuce.needsUpdate = true;
+    luceSporca = true;
+  }
+  geo.attributes.position.needsUpdate = true;
+}
+
+/* ================================================================ *
+ *  MOUSE
+ * ================================================================ */
+const mouse = { x:0, y:0, tx:0, ty:0 };
+addEventListener('pointermove', (e)=>{
+  mouse.tx = (e.clientX/innerWidth - 0.5);
+  mouse.ty = (e.clientY/innerHeight - 0.5);
+  mouseVisto = true;
+});
+
+/* ================================================================ *
+ *  CICLO
+ * ================================================================ */
+const clock = new THREE.Clock();
+let tScena = 0;                     // un solo tempo per scene, onde e treno
+function ciclo(){
+  const dRaw = clock.getDelta();
+  const dtVero = Math.min(dRaw, 0.6);               // per l'inseguimento dello scroll
+  const dt = Math.min(dtVero, 0.05);                // per le rotazioni
+  tScena += dRaw > 0.5 ? 0.033 : dRaw;              // tornando da un'altra scheda la scena riparte da dove era
+  const t  = tScena;
+  polvereMat.uniforms.uT.value = t;
+
+  pDolce += (progress - pDolce) * (1 - Math.exp(-3.0*dtVero));   // anche scorrendo le forme cambiano con calma
+  if(Math.abs(progress - pDolce) < 0.0004) pDolce = progress;
+  const p = pDolce;
+  trasforma(p, t, dt);
+
+  // il marchio: grande e fermo al cancello, si dissolve entrando (lascia il posto al video),
+  // torna piccolo, fermo e frontale sulle due porte, con il diamante di luce nel cuore
+  const fine = THREE.MathUtils.clamp((p-M_INIZIO)/(M_PIENO-M_INIZIO), 0, 1) * intro;   // il marchio piccolo, presente da subito
+  const arrivo = arrivoS * intro;                    // la polvere arrivata nel suo cuore (col tempo, non con lo scroll)
+  const gateF = 1 - intro;
+  const vis = Math.max(gateF, fine*intro);
+  marchio.visible = vis > 0.02;
+  const scala = (1.9*gateF + FINE_S*fine) || 0.001;
+  marchio.scale.setScalar(scala);
+  marchio.position.y = MARCHIO_Y + (FINE_Y - MARCHIO_Y)*fine;   // rimpicciolisce sul posto, senza scendere
+  oroMat.opacity = 0.62*vis;
+
+  // le orbite respirano col marchio
+  orbMat.opacity = 0.22*vis*(gateF + 0.35*intro);   // alla fine appena accennate: il marchio resta protagonista
+  orb1.visible = orb2.visible = vis > 0.02;
+  orb1.rotation.z += dt*0.1; orb2.rotation.z -= dt*0.07;
+  const sOrb = scala/1.9*(1 - 0.4*intro);   // alla fine le orbite si stringono intorno al marchio piccolo
+  orb1.position.y = orb2.position.y = marchio.position.y - 0.3*sOrb;
+  orb1.scale.setScalar(sOrb); orb2.scale.setScalar(sOrb);
+
+  // il mouse, inseguito con calma (al cancello ancora piu' piano)
+  const kMouse = 1 - Math.exp(-(1.2 + 1.4*intro)*dt);
+  mouse.x += (mouse.tx - mouse.x)*kMouse;
+  mouse.y += (mouse.ty - mouse.y)*kMouse;
+  const mezzaH = Math.tan(0.3665) * camera.position.z;
+  const bx = mouse.tx * 2 * mezzaH * camera.aspect, by = -mouse.ty * 2 * mezzaH;
+  if(!mouseVisto){ mwX = 99; mwY = 99; }
+  else if(mwX === 99){ mwX = bx; mwY = by; }
+  else { const kM = 1 - Math.exp(-1.4*dt); mwX += (bx - mwX)*kM; mwY += (by - mwY)*kM; }
+
+  // il mondo respira appena; alla fine si ferma, cosi' il marchio resta frontale
+  world.rotation.y = (Math.sin(p*Math.PI*2)*0.12 + Math.sin(t*0.05)*0.05 + mouse.x*(0.2 - 0.14*gateF)) * (1-fine);
+  world.rotation.x = (Math.sin(p*Math.PI)*0.1 + mouse.y*(0.15 - 0.1*gateF)) * (1-fine);
+  marchio.rotation.y = -world.rotation.y*(gateF + intro*fine);
+  marchio.rotation.x = -world.rotation.x*(gateF + intro*fine);
+  // sul telefono, in verticale, tutta la scena si rimpicciolisce per stare nello schermo;
+  // alla fine il marchio piccolo resta comunque al suo posto, sopra le due porte
+  const adatta = Math.min(1, camera.aspect*1.34);
+  world.scale.setScalar(adatta);
+  world.position.y = FINE_Y*(1 - adatta)*fine;
+
+  // al cancello: il cuore si accende man mano che il treno entra, brilla mentre il marchio scompare
+  const eC = ondaT0 >= 0 ? t - ondaT0 : -1;
+  const arrivati = THREE.MathUtils.clamp((eC - T_TRENO - CORSA*0.6) / (D_TRENO - CORSA*0.6), 0, 1);
+  const cuore = arrivati*arrivati * (1 - THREE.MathUtils.clamp((intro - 0.45)/0.45, 0, 1));
+  luceCuore.visible = cuore > 0.01;
+  luceCuoreMat.opacity = cuore*(0.85 + 0.15*Math.sin(t*2.1));
+  const pc = (1.9 + 0.25*Math.sin(t*1.4)) * (0.55 + 0.45*arrivati);
+  luceCuore.scale.set(pc, pc, 1);
+  luceCuoreMat.rotation = Math.sin(t*0.4)*0.08;
+
+  // il diamante di luce al centro del marchio, quando la nuvola e' arrivata
+  const accesa = arrivo*arrivo*intro;
+  luceMat.opacity = accesa*(0.82 + 0.18*Math.sin(t*1.6));
+  luceDiamante.visible = accesa > 0.01;
+  const pulsa = 1.05 + 0.1*Math.sin(t*1.1);
+  luceDiamante.scale.set(pulsa, pulsa, 1);
+  luceMat.rotation = Math.sin(t*0.3)*0.06;
+
+  const kCam = 1 - Math.exp(-1.0*dt);
+  const par = (0.9 - 0.55*gateF) * (1 - 0.7*fine);
+  camera.position.x += (mouse.x*par - camera.position.x)*kCam;
+  camera.position.y += (-mouse.y*par*0.66 - camera.position.y)*kCam;
+  // nell'ultima sezione la camera si ferma: il marchio piccolo resta immobile al suo posto
+  const zViaggio = 8.4 - Math.sin(p*Math.PI)*1.2;
+  const zDest = zViaggio + (9.1 - zViaggio)*fine;
+  camera.position.z += (zDest - camera.position.z)*(1 - Math.exp(-2.4*dt));
+  camera.lookAt(0,0,0);
+
+  dipingi(p);
+  window.__dbg = { intro, p, prog: progress };
+  renderer.render(scene, camera);
+  requestAnimationFrame(ciclo);
+}
+ciclo();
+
+/* ================================================================ *
+ *  INGRESSO
+ * ================================================================ */
+const gate = document.getElementById('gate');
+let entrato = false;
+function entra(){
+  if(entrato) return;
+  entrato = true;
+  ondaT0 = tScena;                                  // il sasso nell'acqua
+  gate.style.pointerEvents = 'none';
+  // logo e motto si spengono mentre la polvere si stende nello specchio
+  gsap.to(gate, { opacity:0, duration:2.5, delay:1.5, onComplete(){ gate.style.display='none'; } });
+  // tre onde ravvicinate (a 1,3 s, 2,5 s e 3,7 s), poi da 7 a 13 s il treno di luce entra nel cuore del marchio;
+  // il cuore scintilla mentre il marchio rimpicciolisce e scompare, e si entra
+  const T_DENTRO = T_TRENO + CORSA + (D_TRENO - CORSA)*2/3;   // si entra quando due terzi del treno sono dentro
+  gsap.to({v:0}, { v:1, duration:3.8, delay:T_DENTRO, ease:'power2.inOut', onUpdate(){ intro = this.targets()[0].v; } });
+  gsap.to('#alto', { opacity:1, y:0, duration:1.4, delay:T_DENTRO+1.6, ease:'power2.out',
+    onComplete(){ document.getElementById('alto').style.pointerEvents='auto'; } });
+  gsap.fromTo('#c1 .blocco > *', { opacity:0, y:22 },
+    { opacity:1, y:0, duration:1.5, stagger:0.14, delay:T_DENTRO+1.8, ease:'power3.out' });
+  // il primo video: Ysandra, la ragazza in rosso, dall'inizio
+  const vid = document.querySelector('.hero-video video');
+  gsap.to('.hero-video', { opacity:1, duration:2.8, delay:T_DENTRO+2.2, ease:'power2.out',
+    onStart(){ try{ vid.currentTime = 0; vid.play(); }catch(e){} } });
+  // lo scroll si apre solo adesso, dall'inizio della pagina
+  gsap.delayedCall(T_DENTRO - 0.2, ()=>{
+    window.scrollTo(0,0); progress = 0; pDolce = 0;
+    scrollLibero = true; bloccaScroll(menu.classList.contains('aperto'));
+  });
+}
+document.getElementById('zona-marchio').addEventListener('click', entra);
+document.getElementById('logo-gate').addEventListener('click', entra);
+
+/* ================================================================ *
+ *  MENU A TRE LINETTE E PANNELLI
+ * ================================================================ */
+const burger   = document.getElementById('burger');
+const menu     = document.getElementById('menu');
+const indietro = document.getElementById('indietro');
+const pannelli = {
+  maison:    document.getElementById('pan-maison'),
+  creazioni: document.getElementById('pan-creazioni'),
+  eventi:    document.getElementById('pan-eventi'),
+  stampa:    document.getElementById('pan-stampa'),
+  domande:   document.getElementById('pan-domande'),
+};
+let pannelloAperto = null;
+
+let scrollLibero = false;           // la pagina scorre solo dopo l'ingresso, qualunque cosa si clicchi prima
+function bloccaScroll(si){
+  (document.scrollingElement || document.documentElement).style.overflow = (si || !scrollLibero) ? 'hidden' : '';
+}
+function chiudiPannello(){
+  if(pannelloAperto){ pannelloAperto.classList.remove('aperto'); pannelloAperto = null; }
+  indietro.style.display = 'none';
+}
+function chiudiTutto(){
+  chiudiPannello();
+  menu.classList.remove('aperto');
+  burger.classList.remove('aperto');
+  bloccaScroll(false);
+}
+function apriMenu(){
+  menu.classList.add('aperto');
+  burger.classList.add('aperto');
+  bloccaScroll(true);
+}
+burger.addEventListener('click', ()=>{
+  if(burger.classList.contains('aperto')){ chiudiTutto(); return; }
+  apriMenu();
+});
+document.getElementById('scopri-maison').addEventListener('click', apriMenu);
+document.querySelectorAll('#menu .voce').forEach(v=>{
+  v.addEventListener('click', ()=>{
+    const quale = v.dataset.pan;
+    if(quale === 'accesso'){
+      chiudiTutto();
+      const d = document.scrollingElement || document.documentElement;
+      window.scrollTo({ top: d.scrollHeight - d.clientHeight, behavior:'smooth' });
+      return;
+    }
+    pannelloAperto = pannelli[quale];
+    pannelloAperto.classList.add('aperto');
+    pannelloAperto.scrollTop = 0;
+    indietro.style.display = 'block';
+  });
+});
+indietro.addEventListener('click', chiudiPannello);
+addEventListener('keydown', (e)=>{ if(!entrato) return; if(e.key === 'Escape'){ if(pannelloAperto) chiudiPannello(); else chiudiTutto(); } });
+
+/* ================================================================ *
+ *  LE DUE PORTE  (anteprima, nessun invio)
+ * ================================================================ */
+document.getElementById('via-codice').addEventListener('click', ()=>{
+  const v = document.getElementById('codice').value.trim();
+  if(v) document.getElementById('esito-codice').style.display = 'block';
+});
+document.getElementById('apri-lista').addEventListener('click', function(){
+  this.closest('.porta').classList.add('lista-aperta');
+  document.getElementById('blocco-lista').classList.add('aperto');
+  this.style.display = 'none';
+});
+document.getElementById('via-lista').addEventListener('click', ()=>{
+  document.getElementById('esito-lista').style.display = 'block';
+});
+
+/* ================================================================ *
+ *  RESIZE
+ * ================================================================ */
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  renderer.setSize(innerWidth, innerHeight);
+  polvereMat.uniforms.uS.value = 22*renderer.getPixelRatio();
+  leggiScroll();
+});
+</script>
